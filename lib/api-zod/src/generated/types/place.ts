@@ -6,6 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface Place {
+  id: string;
+  name: string;
+  address?: string;
+  lat: number;
+  lon: number;
+  type?: string;
 }

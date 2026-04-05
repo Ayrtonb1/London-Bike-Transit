@@ -1,15 +1,18 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: London Bike Transit Planner API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: routes
+    description: Route planning operations
+  - name: places
+    description: Place search operations
 paths:
   /healthz:
     get:
@@ -24,6 +27,88 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /places/search:
+    get:
+      operationId: searchPlaces
+      tags: [places]
+      summary: Search for places in London
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: lat
+          in: query
+          required: false
+          schema:
+            type: number
+        - name: lon
+          in: query
+          required: false
+          schema:
+            type: number
+      responses:
+        "200":
+          description: List of matching places
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Place"
+
+  /routes/plan:
+    get:
+      operationId: planRoute
+      tags: [routes]
+      summary: Plan a route with cycling replacing walking
+      parameters:
+        - name: fromLat
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: fromLon
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: toLat
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: toLon
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: fromName
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: toName
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Route options
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +119,136 @@ components:
       required:
         - status
 
+    Place:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        address:
+          type: string
+        lat:
+          type: number
+        lon:
+          type: number
+        type:
+          type: string
+      required:
+        - id
+        - name
+        - lat
+        - lon
+
+    RouteLeg:
+      type: object
+      properties:
+        mode:
+          type: string
+          description: "Mode of transport: cycle, tube, bus, overground, elizabeth-line, dlr, national-rail, walking"
+        instruction:
+          type: string
+        durationMinutes:
+          type: number
+        distanceMeters:
+          type: number
+        fromName:
+          type: string
+        toName:
+          type: string
+        originalMode:
+          type: string
+          description: "Original mode before cycling substitution (if applicable)"
+        isSubstituted:
+          type: boolean
+          description: "Whether cycling was substituted for walking"
+        lineId:
+          type: string
+        lineName:
+          type: string
+        stopPoints:
+          type: array
+          items:
+            $ref: "#/components/schemas/StopPoint"
+        polyline:
+          type: array
+          items:
+            type: array
+            items:
+              type: number
+      required:
+        - mode
+        - instruction
+        - durationMinutes
+        - distanceMeters
+        - fromName
+        - toName
+
+    StopPoint:
+      type: object
+      properties:
+        name:
+          type: string
+        lat:
+          type: number
+        lon:
+          type: number
+      required:
+        - name
+        - lat
+        - lon
+
+    Journey:
+      type: object
+      properties:
+        id:
+          type: string
+        totalDurationMinutes:
+          type: number
+        originalDurationMinutes:
+          type: number
+        cyclingDurationMinutes:
+          type: number
+        legs:
+          type: array
+          items:
+            $ref: "#/components/schemas/RouteLeg"
+        departureTime:
+          type: string
+        arrivalTime:
+          type: string
+        summary:
+          type: string
+      required:
+        - id
+        - totalDurationMinutes
+        - originalDurationMinutes
+        - cyclingDurationMinutes
+        - legs
+        - summary
+
+    RouteResponse:
+      type: object
+      properties:
+        journeys:
+          type: array
+          items:
+            $ref: "#/components/schemas/Journey"
+        fromName:
+          type: string
+        toName:
+          type: string
+      required:
+        - journeys
+        - fromName
+        - toName
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        details:
+          type: string
+      required:
+        - error

@@ -5,7 +5,10 @@
  * London Bike Transit Planner API
  * OpenAPI spec version: 0.1.0
  */
+import type { Journey } from "./journey";
 
-export interface HealthStatus {
-  status: string;
+export interface RouteResponse {
+  journeys: Journey[];
+  fromName: string;
+  toName: string;
 }

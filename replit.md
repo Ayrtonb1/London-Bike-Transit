@@ -25,3 +25,25 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+
+## Artifacts
+
+### London Bike Transit Planner (`artifacts/london-bike-transit`)
+- **Preview path**: `/`
+- **Kind**: React + Vite web app
+- **Description**: Google Maps-style transit planner for London that replaces walking legs with cycling time. Uses TfL Journey Planner API and Leaflet/OpenStreetMap.
+- **Key features**:
+  - Typeahead location search using Nominatim (OSM)
+  - TfL public transport routing (Tube, Bus, Overground, Elizabeth line, DLR, National Rail)
+  - Walking legs automatically replaced with cycling time estimates
+  - Interactive Leaflet map with colour-coded route legs
+  - Green dashed lines for cycling-substituted walking legs
+  - TfL tube line colour coding
+  - Journey time savings badge (cycling vs walking)
+
+### API Server (`artifacts/api-server`)
+- **Preview path**: `/api`
+- **Routes**:
+  - `GET /api/healthz` — health check
+  - `GET /api/places/search?query=...` — Nominatim place search (London-bounded)
+  - `GET /api/routes/plan?fromLat=...&fromLon=...&toLat=...&toLon=...` — TfL journey planner with cycling substitution
