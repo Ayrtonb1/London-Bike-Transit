@@ -144,20 +144,39 @@ export default function Home() {
             {routeData?.journeys && !isRouting && (
               <div className="space-y-3">
                 {routeData.journeys.length === 0 ? (
-                  <div className="text-center text-muted-foreground py-6 border border-border rounded-xl bg-card">
-                    <p className="font-medium">No routes found</p>
-                    <p className="text-sm mt-1">Try different locations in London</p>
+                  <div className="text-center text-muted-foreground py-6 border border-border rounded-xl bg-card px-4">
+                    <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-amber-500" />
+                    <p className="font-medium text-foreground">
+                      {routeData.filteredCount > 0
+                        ? "No viable bike routes right now"
+                        : "No routes found"}
+                    </p>
+                    <p className="text-sm mt-1">
+                      {routeData.filteredCount > 0
+                        ? peakStatus.isPeak
+                          ? `All ${routeData.filteredCount} routes have bike restrictions during peak hours. Try again after ${peakStatus.nextChange}.`
+                          : "The available routes use modes that don't allow bikes. Try different locations."
+                        : "Try different locations in London."}
+                    </p>
                   </div>
                 ) : (
                   <>
                     <div className="flex items-center justify-between">
                       <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                        Routes found
+                        Viable routes
                       </h2>
                       <span className="text-xs text-muted-foreground">
                         {routeData.journeys.length} option{routeData.journeys.length !== 1 ? "s" : ""}
                       </span>
                     </div>
+                    {routeData.filteredCount > 0 && (
+                      <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                        <span>
+                          {routeData.filteredCount} route{routeData.filteredCount !== 1 ? "s were" : " was"} hidden — {peakStatus.isPeak ? "bike restrictions apply during peak hours" : "they include modes where bikes aren't allowed"}.
+                        </span>
+                      </div>
+                    )}
                     {routeData.journeys.map((journey) => (
                       <JourneyCard
                         key={journey.id}

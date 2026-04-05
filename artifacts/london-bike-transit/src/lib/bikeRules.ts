@@ -194,3 +194,22 @@ export const ALL_MODE_RULES: Array<{
 ];
 
 export const PEAK_HOURS_TEXT = "07:30–09:30 and 16:00–19:00, Monday–Friday (excluding bank holidays)";
+
+export function isLegViableNow(
+  mode: string,
+  lineId?: string,
+  date: Date = new Date()
+): boolean {
+  const restriction = getBikeRestriction(mode, lineId);
+  if (restriction.allowed === "yes" || restriction.allowed === "partial") return true;
+  if (restriction.allowed === "no") return false;
+  // off-peak: viable only if not currently peak
+  return !getPeakStatus(date).isPeak;
+}
+
+export function isJourneyViableNow(
+  legs: Array<{ mode: string; lineId?: string }>,
+  date: Date = new Date()
+): boolean {
+  return legs.every((leg) => isLegViableNow(leg.mode, leg.lineId, date));
+}
