@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { SearchBox } from "@/components/SearchBox";
 import { JourneyCard } from "@/components/JourneyCard";
 import { Map } from "@/components/Map";
-import { usePlanRoute, getPlanRouteQueryKey } from "@workspace/api-client-react";
-import type { Place, Journey } from "@workspace/api-client-react/src/generated/api.schemas";
+import { planRoute, type Place, type Journey } from "@/lib/transit";
 import { Bike, Compass } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -14,29 +14,20 @@ export default function Home() {
 
   const shouldPlanRoute = !!fromPlace && !!toPlace;
 
-  const { data: routeData, isLoading: isRouting } = usePlanRoute(
-    {
-      fromLat: fromPlace?.lat || 0,
-      fromLon: fromPlace?.lon || 0,
-      toLat: toPlace?.lat || 0,
-      toLon: toPlace?.lon || 0,
-      fromName: fromPlace?.name,
-      toName: toPlace?.name,
-    },
-    {
-      query: {
-        enabled: shouldPlanRoute,
-        queryKey: getPlanRouteQueryKey({
-          fromLat: fromPlace?.lat || 0,
-          fromLon: fromPlace?.lon || 0,
-          toLat: toPlace?.lat || 0,
-          toLon: toPlace?.lon || 0,
-          fromName: fromPlace?.name,
-          toName: toPlace?.name,
-        }),
-      },
-    }
-  );
+  const { data: routeData, isLoading: isRouting } = useQuery({
+    queryKey: ["plan-route", fromPlace?.lat, fromPlace?.lon, toPlace?.lat, toPlace?.lon],
+    queryFn: () =>
+      planRoute(
+        fromPlace!.lat,
+        fromPlace!.lon,
+        toPlace!.lat,
+        toPlace!.lon,
+        fromPlace!.name,
+        toPlace!.name
+      ),
+    enabled: shouldPlanRoute,
+    staleTime: 5 * 60 * 1000,
+  });
 
   useEffect(() => {
     if (routeData?.journeys?.length) {
@@ -46,8 +37,8 @@ export default function Home() {
     }
   }, [routeData]);
 
-  const selectedJourney =
-    routeData?.journeys?.find((j) => j.id === selectedJourneyId) || null;
+  const selectedJourney: Journey | null =
+    routeData?.journeys?.find((j) => j.id === selectedJourneyId) ?? null;
 
   return (
     <div className="flex h-[100dvh] w-full overflow-hidden bg-background font-sans">
@@ -65,16 +56,21 @@ export default function Home() {
           </div>
 
           <div className="space-y-3 relative">
-            <div className="absolute left-6 top-6 bottom-6 w-0.5 bg-border -z-10" />
             <SearchBox
               placeholder="Where from?"
               value={fromPlace}
-              onSelect={setFromPlace}
+              onSelect={(place) => {
+                setFromPlace(place);
+                setSelectedJourneyId(null);
+              }}
             />
             <SearchBox
               placeholder="Where to?"
               value={toPlace}
-              onSelect={setToPlace}
+              onSelect={(place) => {
+                setToPlace(place);
+                setSelectedJourneyId(null);
+              }}
             />
           </div>
         </div>
@@ -105,17 +101,26 @@ export default function Home() {
 
             {routeData?.journeys && !isRouting && (
               <div className="space-y-4">
-                <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2">
-                  Suggested Routes
-                </h2>
-                {routeData.journeys.map((journey) => (
-                  <JourneyCard
-                    key={journey.id}
-                    journey={journey}
-                    isSelected={selectedJourneyId === journey.id}
-                    onClick={() => setSelectedJourneyId(journey.id)}
-                  />
-                ))}
+                {routeData.journeys.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-8">
+                    <p className="font-medium">No routes found</p>
+                    <p className="text-sm mt-1">Try different locations in London</p>
+                  </div>
+                ) : (
+                  <>
+                    <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                      Suggested Routes
+                    </h2>
+                    {routeData.journeys.map((journey) => (
+                      <JourneyCard
+                        key={journey.id}
+                        journey={journey}
+                        isSelected={selectedJourneyId === journey.id}
+                        onClick={() => setSelectedJourneyId(journey.id)}
+                      />
+                    ))}
+                  </>
+                )}
               </div>
             )}
           </div>

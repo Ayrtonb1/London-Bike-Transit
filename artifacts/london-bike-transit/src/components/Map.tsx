@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
-import type { Journey, Place } from "@workspace/api-client-react/src/generated/api.schemas";
+import type { Journey, Place } from "@/lib/transit";
 
 // Fix leaflet default icon
 import iconUrl from "leaflet/dist/images/marker-icon.png";

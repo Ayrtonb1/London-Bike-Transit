@@ -1,5 +1,5 @@
 import { Bike, Train, Bus, TrainFront, PersonStanding, Zap } from "lucide-react";
-import type { Journey, RouteLeg } from "@workspace/api-client-react/src/generated/api.schemas";
+import type { Journey } from "@/lib/transit";
 import { Badge } from "@/components/ui/badge";
 
 interface JourneyCardProps {

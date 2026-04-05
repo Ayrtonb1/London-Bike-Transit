@@ -1,9 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { useSearchPlaces, getSearchPlacesQueryKey } from "@workspace/api-client-react";
 import { useDebounce } from "@/hooks/use-debounce";
-import type { Place } from "@workspace/api-client-react/src/generated/api.schemas";
+import { searchPlaces, type Place } from "@/lib/transit";
 
 interface SearchBoxProps {
   placeholder: string;
@@ -14,18 +13,30 @@ interface SearchBoxProps {
 export function SearchBox({ placeholder, onSelect, value }: SearchBoxProps) {
   const [query, setQuery] = useState(value?.name || "");
   const [isOpen, setIsOpen] = useState(false);
-  const debouncedQuery = useDebounce(query, 300);
+  const [places, setPlaces] = useState<Place[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const debouncedQuery = useDebounce(query, 350);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const { data: places, isLoading } = useSearchPlaces(
-    { query: debouncedQuery },
-    {
-      query: {
-        enabled: debouncedQuery.length >= 2,
-        queryKey: getSearchPlacesQueryKey({ query: debouncedQuery }),
-      },
+  const doSearch = useCallback(async (q: string) => {
+    if (q.length < 2) {
+      setPlaces([]);
+      return;
     }
-  );
+    setIsLoading(true);
+    try {
+      const results = await searchPlaces(q);
+      setPlaces(results);
+    } catch {
+      setPlaces([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    doSearch(debouncedQuery);
+  }, [debouncedQuery, doSearch]);
 
   useEffect(() => {
     if (value) {
@@ -50,6 +61,7 @@ export function SearchBox({ placeholder, onSelect, value }: SearchBoxProps) {
         <Input
           placeholder={placeholder}
           value={query}
+          data-testid="input-search"
           onChange={(e) => {
             setQuery(e.target.value);
             setIsOpen(true);
@@ -63,11 +75,12 @@ export function SearchBox({ placeholder, onSelect, value }: SearchBoxProps) {
         <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-xl max-h-60 overflow-y-auto">
           {isLoading ? (
             <div className="p-4 text-sm text-muted-foreground text-center">Searching...</div>
-          ) : places && places.length > 0 ? (
+          ) : places.length > 0 ? (
             <ul className="py-1">
               {places.map((place) => (
                 <li
                   key={place.id}
+                  data-testid={`place-result-${place.id}`}
                   className="px-4 py-3 hover:bg-muted cursor-pointer transition-colors"
                   onClick={() => {
                     onSelect(place);
