@@ -1,4 +1,4 @@
-import { isJourneyViableNow } from "./bikeRules";
+import { isJourneyViableNow, getPeakStatus } from "./bikeRules";
 
 export interface Place {
   id: string;
@@ -55,7 +55,7 @@ function cycleDuration(distanceMeters: number): number {
 }
 
 function walkingDistanceEstimate(durationMinutes: number): number {
-  return durationMinutes * 80; // ~4.8 km/h walking
+  return durationMinutes * 80; // ~4.8 km/h walking → ~80 m/min
 }
 
 function modeLabel(tflMode: string): string {
@@ -83,7 +83,6 @@ function decodeLineString(lineString: string): [number, number][] {
   }
 }
 
-// Haversine distance between two lat/lon points in metres
 function haversineMetres(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -210,8 +209,8 @@ type TflLeg = {
   duration: number;
   mode: { id: string };
   instruction: { summary: string };
-  departurePoint: { commonName: string };
-  arrivalPoint: { commonName: string };
+  departurePoint: { commonName: string; lat?: number; lon?: number };
+  arrivalPoint: { commonName: string; lat?: number; lon?: number };
   distance?: number;
   routeOptions?: { lineIdentifier?: { id: string; name: string } }[];
   path?: {
@@ -296,11 +295,11 @@ function buildJourney(journey: TflJourney, jIdx: number): Journey {
   };
 }
 
-/** A stable signature for deduplicating journeys by their transit mode sequence */
+/** Stable signature for deduplication: transit legs only (cycles replace walks so we ignore them) */
 function journeySignature(j: Journey): string {
   return j.legs
-    .filter((l) => !l.isSubstituted)
-    .map((l) => `${l.mode}:${l.lineId ?? ""}`)
+    .filter((l) => !l.isSubstituted && l.mode !== "cycle")
+    .map((l) => `${l.mode}:${l.lineId ?? ""}:${l.fromName}→${l.toName}`)
     .join("|");
 }
 
@@ -308,13 +307,18 @@ function deduplicateJourneys(journeys: Journey[]): Journey[] {
   const seen = new Set<string>();
   return journeys.filter((j) => {
     const sig = journeySignature(j);
+    // Cycle-only journeys all share the same empty sig; keep only one
+    if (!sig) {
+      if (seen.has("__cycle_only__")) return false;
+      seen.add("__cycle_only__");
+      return true;
+    }
     if (seen.has(sig)) return false;
     seen.add(sig);
     return true;
   });
 }
 
-/** Build a synthetic cycle-only journey from A→B as a guaranteed fallback */
 function synthesisCycleJourney(
   fromLat: number,
   fromLon: number,
@@ -323,11 +327,9 @@ function synthesisCycleJourney(
   fromLabel: string,
   toLabel: string
 ): Journey {
-  // Road distance ≈ straight-line × 1.4 (urban routing factor)
   const straightLine = haversineMetres(fromLat, fromLon, toLat, toLon);
   const roadEstimate = Math.round(straightLine * 1.4);
   const duration = cycleDuration(roadEstimate);
-
   return {
     id: "journey-cycle-only",
     totalDurationMinutes: duration,
@@ -353,16 +355,30 @@ function buildTflUrl(
   fromLon: number,
   toLat: number,
   toLon: number,
-  modes: string
-): URL {
+  modes: string,
+  preference: "LeastTime" | "LeastWalking" | "LeastInterchange" = "LeastTime"
+): string {
   const url = new URL(
     `https://api.tfl.gov.uk/Journey/JourneyResults/${fromLat}%2C${fromLon}/to/${toLat}%2C${toLon}`
   );
   url.searchParams.set("mode", modes);
   url.searchParams.set("walkingSpeed", "fast");
-  url.searchParams.set("journeyPreference", "LeastTime");
+  url.searchParams.set("journeyPreference", preference);
   url.searchParams.set("alternativeJourneys", "true");
-  return url;
+  return url.toString();
+}
+
+async function fetchTflJourneys(url: string, offset: number): Promise<Journey[]> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.journeys ?? [] as TflJourney[]).map(
+      (j: TflJourney, i: number) => buildJourney(j, offset + i)
+    );
+  } catch {
+    return [];
+  }
 }
 
 export async function planRoute(
@@ -376,58 +392,51 @@ export async function planRoute(
   const fromLabel = fromName ?? `${fromLat}, ${fromLon}`;
   const toLabel = toName ?? `${toLat}, ${toLon}`;
 
-  // All transit modes (TfL's standard set)
-  const transitModes = "tube,bus,national-rail,overground,elizabeth-line,dlr,walking,river-bus";
-  // Cycle-only route from TfL for a real road-routed cycling option
-  const cycleModes = "cycle,walking";
+  const { isPeak } = getPeakStatus();
 
-  // Fire both in parallel
-  const [transitRes, cycleRes] = await Promise.allSettled([
-    fetch(buildTflUrl(fromLat, fromLon, toLat, toLon, transitModes).toString()),
-    fetch(buildTflUrl(fromLat, fromLon, toLat, toLon, cycleModes).toString()),
+  // All standard transit modes — may include non-viable ones (bus, deep tube)
+  // These will be viability-filtered after building
+  const ALL_MODES = "tube,bus,national-rail,overground,elizabeth-line,dlr,walking,river-bus";
+
+  // Bike-friendly modes: excludes bus entirely.
+  // During peak, also excludes off-peak-only services (overground, elizabeth-line, dlr)
+  // so TfL routes through only currently-permitted services, then adds walking legs
+  // (which we convert to cycling) for the last stretch to the destination.
+  // This is the key mechanism for surfacing routes like "Overground to X, then cycle".
+  const BIKE_FRIENDLY_MODES = isPeak
+    ? "tube,national-rail,river-bus,walking"
+    : "tube,overground,national-rail,elizabeth-line,dlr,river-bus,walking";
+
+  // Fire all requests in parallel: 3 TfL calls (all modes, bike-friendly, cycle-only)
+  const [allResults, bikeFriendlyResults, cycleResults] = await Promise.all([
+    fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, ALL_MODES, "LeastTime"), 0),
+    fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, BIKE_FRIENDLY_MODES, "LeastTime"), 100),
+    fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, "cycle,walking", "LeastTime"), 200),
   ]);
 
-  // Process transit journeys
-  let transitJourneys: Journey[] = [];
-  if (transitRes.status === "fulfilled" && transitRes.value.ok) {
-    const data = await transitRes.value.json();
-    transitJourneys = (data.journeys ?? [] as TflJourney[]).map(
-      (j: TflJourney, i: number) => buildJourney(j, i)
-    );
-  }
-
-  // Process cycling journey
-  let cycleJourneys: Journey[] = [];
-  if (cycleRes.status === "fulfilled" && cycleRes.value.ok) {
-    const data = await cycleRes.value.json();
-    cycleJourneys = (data.journeys ?? [] as TflJourney[]).slice(0, 1).map(
-      (j: TflJourney, i: number) => buildJourney(j, 1000 + i)
-    );
-  }
-
-  const allRaw = [...transitJourneys, ...cycleJourneys];
+  const allRaw = [...allResults, ...bikeFriendlyResults, ...cycleResults];
   const totalCount = allRaw.length;
 
-  // Filter to viable journeys (correct bike rules for current time + Northern line stations)
+  // Filter to only journeys that are viable with a bike right now
   const now = new Date();
   const viable = allRaw.filter((j) => isJourneyViableNow(j.legs, now));
 
-  // Deduplicate by mode signature, then sort by duration (shortest first)
+  // Deduplicate by transit-leg signature, then sort shortest first
   const deduped = deduplicateJourneys(viable).sort(
     (a, b) => a.totalDurationMinutes - b.totalDurationMinutes
   );
 
-  // Always ensure a cycle-only option exists as a fallback
+  // Always guarantee a cycle-only option as ultimate fallback
   const hasCycleOnly = deduped.some((j) => j.summary === "Cycle only");
   if (!hasCycleOnly) {
     const fallback = synthesisCycleJourney(fromLat, fromLon, toLat, toLon, fromLabel, toLabel);
-    // Insert cycling fallback sorted by duration
-    const insertAt = deduped.findIndex((j) => j.totalDurationMinutes > fallback.totalDurationMinutes);
+    const insertAt = deduped.findIndex(
+      (j) => j.totalDurationMinutes > fallback.totalDurationMinutes
+    );
     if (insertAt === -1) deduped.push(fallback);
     else deduped.splice(insertAt, 0, fallback);
   }
 
-  // Re-index IDs
   const journeys = deduped.slice(0, 5).map((j, i) => ({ ...j, id: `journey-${i}` }));
 
   return {
