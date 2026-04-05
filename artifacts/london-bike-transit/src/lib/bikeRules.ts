@@ -50,7 +50,12 @@ export function getPeakStatus(date: Date = new Date()): PeakStatus {
     isPeak: false,
     label: "Off-peak — bikes allowed",
     detail: "Non-folding bikes are currently permitted on eligible TfL services.",
-    nextChange: minutesSinceMidnight < PEAK_HOURS[0].start ? "07:30" : minutesSinceMidnight < PEAK_HOURS[1].start ? "16:00" : "Monday 07:30",
+    nextChange:
+      minutesSinceMidnight < PEAK_HOURS[0].start
+        ? "07:30"
+        : minutesSinceMidnight < PEAK_HOURS[1].start
+        ? "16:00"
+        : "Monday 07:30",
   };
 }
 
@@ -65,11 +70,40 @@ const TUBE_PERMITTED_LINES = new Set([
   "metropolitan",
 ]);
 
-const NORTHERN_LINE_PERMITTED_SECTIONS = [
-  "High Barnet — East Finchley",
-  "Edgware — Colindale",
-  "Hendon Central — Golders Green",
-];
+// Northern line: stations on above-ground OUTER sections where bikes are permitted.
+// Bikes are ONLY allowed north of East Finchley (High Barnet / Mill Hill East branch)
+// and north of Golders Green (Edgware branch).
+// Any leg whose endpoints are both within this set is permitted; all others are banned.
+const NORTHERN_PERMITTED_STATIONS = new Set([
+  // High Barnet branch (above ground north from East Finchley)
+  "east finchley",
+  "finchley central",
+  "west finchley",
+  "woodside park",
+  "totteridge & whetstone",
+  "totteridge and whetstone",
+  "high barnet",
+  // Mill Hill East spur
+  "mill hill east",
+  // Edgware branch (above ground north from Golders Green)
+  "golders green",
+  "brent cross",
+  "hendon central",
+  "colindale",
+  "burnt oak",
+  "edgware",
+]);
+
+function normaliseStation(name: string): string {
+  return name.toLowerCase().replace(/\s+station$/i, "").trim();
+}
+
+export function isNorthernLineLegPermitted(fromName?: string, toName?: string): boolean {
+  if (!fromName || !toName) return false;
+  const from = normaliseStation(fromName);
+  const to = normaliseStation(toName);
+  return NORTHERN_PERMITTED_STATIONS.has(from) && NORTHERN_PERMITTED_STATIONS.has(to);
+}
 
 export function getBikeRestriction(
   mode: string,
@@ -89,7 +123,8 @@ export function getBikeRestriction(
       return {
         allowed: "no",
         label: "Bikes not allowed",
-        detail: "Non-folding bikes are never permitted on TfL buses. Folding bikes must be fully folded and stowed as luggage, with no space guaranteed.",
+        detail:
+          "Non-folding bikes are never permitted on TfL buses. Folding bikes must be fully folded and stowed as luggage, with no space guaranteed.",
         officialNote: "TfL bus policy: non-folding bikes not permitted at any time.",
       };
 
@@ -100,15 +135,28 @@ export function getBikeRestriction(
           allowed: "off-peak",
           label: "Off-peak only (weekdays)",
           detail: `The ${lineId ?? "tube"} line permits non-folding bikes off-peak: before 07:30, between 09:30–16:00, and after 19:00 Mon–Fri. Bikes are allowed all day on weekends and bank holidays.`,
-          officialNote: "Permitted on Circle, District, Hammersmith & City, and Metropolitan lines off-peak.",
+          officialNote:
+            "Permitted on Circle, District, Hammersmith & City, and Metropolitan lines off-peak.",
         };
       }
       if (line === "northern") {
+        const permitted = isNorthernLineLegPermitted(fromName, toName);
+        if (permitted) {
+          return {
+            allowed: "yes",
+            label: "Above-ground section — bikes allowed",
+            detail:
+              "This Northern line leg is on an above-ground outer section (High Barnet or Edgware branch north of East Finchley / Golders Green) where non-folding bikes are permitted at all times.",
+            officialNote: "Northern line: bikes permitted on above-ground outer sections.",
+          };
+        }
         return {
-          allowed: "partial",
-          label: "Restricted — outer sections only",
-          detail: `Non-folding bikes are only allowed on the Northern line at specific above-ground sections: ${NORTHERN_LINE_PERMITTED_SECTIONS.join("; ")}. The deep-tunnel sections through central London are banned at all times, including weekends.`,
-          officialNote: "Northern line: bikes only permitted on above-ground outer sections.",
+          allowed: "no",
+          label: "Bikes not allowed — tunnel section",
+          detail:
+            "This Northern line leg passes through the underground tunnel section where non-folding bikes are banned. Bikes are only allowed on the outer above-ground sections: High Barnet/Mill Hill East north of East Finchley, and Edgware branch north of Golders Green.",
+          officialNote:
+            "Northern line: bikes only allowed on outer above-ground sections.",
         };
       }
       return {
@@ -123,7 +171,8 @@ export function getBikeRestriction(
       return {
         allowed: "off-peak",
         label: "Off-peak only",
-        detail: "Non-folding bikes are allowed on London Overground off-peak only: not during 07:30–09:30 or 16:00–19:00 Mon–Fri. Exception: bikes are allowed on trains leaving Liverpool Street 07:30–09:30, and arriving Liverpool Street 16:00–19:00.",
+        detail:
+          "Non-folding bikes are allowed on London Overground off-peak only: not during 07:30–09:30 or 16:00–19:00 Mon–Fri. Exception: bikes are allowed on trains leaving Liverpool Street 07:30–09:30, and arriving Liverpool Street 16:00–19:00.",
         officialNote: "London Overground: non-folding bikes off-peak only.",
       };
 
@@ -131,15 +180,18 @@ export function getBikeRestriction(
       return {
         allowed: "off-peak",
         label: "Off-peak only",
-        detail: "Non-folding bikes are permitted on many Elizabeth line off-peak services. Not allowed during peak hours (07:30–09:30 or 16:00–19:00, Mon–Fri). As of 31 March 2025, non-folding e-bikes are banned at all times.",
-        officialNote: "Elizabeth line: non-folding bikes off-peak only; non-folding e-bikes banned since 31 March 2025.",
+        detail:
+          "Non-folding bikes are permitted on many Elizabeth line off-peak services. Not allowed during peak hours (07:30–09:30 or 16:00–19:00, Mon–Fri). As of 31 March 2025, non-folding e-bikes are banned at all times.",
+        officialNote:
+          "Elizabeth line: non-folding bikes off-peak only; non-folding e-bikes banned since 31 March 2025.",
       };
 
     case "dlr":
       return {
         allowed: "off-peak",
         label: "Off-peak only (not Bank)",
-        detail: "Non-folding bikes are allowed on the DLR off-peak, except to or from Bank station. Peak hours are 07:30–09:30 and 16:00–19:00, Mon–Fri. Non-folding e-bikes banned since 31 March 2025.",
+        detail:
+          "Non-folding bikes are allowed on the DLR off-peak, except to or from Bank station. Peak hours are 07:30–09:30 and 16:00–19:00, Mon–Fri. Non-folding e-bikes banned since 31 March 2025.",
         officialNote: "DLR: bikes off-peak only; not permitted at Bank station.",
       };
 
@@ -147,8 +199,10 @@ export function getBikeRestriction(
       return {
         allowed: "off-peak",
         label: "Off-peak (reservation may be needed)",
-        detail: "Non-folding bikes are generally allowed on National Rail off-peak services in SE England. Some operators require advance reservation of a bike space. Check your specific train operator's policy. Non-folding e-bikes are still allowed off-peak on National Rail (unlike TfL services).",
-        officialNote: "National Rail: bikes off-peak; reservation may be required. E-bikes still permitted off-peak.",
+        detail:
+          "Non-folding bikes are generally allowed on National Rail off-peak services in SE England. Some operators require advance reservation of a bike space. Check your specific train operator's policy. Non-folding e-bikes are still allowed off-peak on National Rail (unlike TfL services).",
+        officialNote:
+          "National Rail: bikes off-peak; reservation may be required. E-bikes still permitted off-peak.",
       };
 
     case "river-bus":
@@ -183,33 +237,75 @@ export const ALL_MODE_RULES: Array<{
   summary: string;
 }> = [
   { mode: "bus", label: "Bus", restriction: "no", summary: "Non-folding bikes never permitted" },
-  { mode: "tube-permitted", label: "Tube (Circle / District / Met / H&C)", restriction: "off-peak", summary: "Off-peak weekdays; all day weekends" },
-  { mode: "tube-deep", label: "Tube (Central / Victoria / Jubilee / Piccadilly / Bakerloo)", restriction: "no", summary: "Non-folding bikes never permitted — deep tunnels" },
-  { mode: "tube-northern", label: "Tube (Northern line)", restriction: "partial", summary: "Above-ground outer sections only (High Barnet–E. Finchley, Edgware–Colindale, Hendon Central–Golders Green)" },
-  { mode: "overground", label: "Overground", restriction: "off-peak", summary: "Off-peak weekdays; all day weekends" },
-  { mode: "elizabeth-line", label: "Elizabeth Line", restriction: "off-peak", summary: "Off-peak weekdays; all day weekends. E-bikes banned since March 2025" },
-  { mode: "dlr", label: "DLR", restriction: "off-peak", summary: "Off-peak only; not at Bank station. E-bikes banned since March 2025" },
-  { mode: "national-rail", label: "National Rail", restriction: "off-peak", summary: "Off-peak; may require advance reservation. E-bikes still permitted off-peak" },
+  {
+    mode: "tube-permitted",
+    label: "Tube (Circle / District / Met / H&C)",
+    restriction: "off-peak",
+    summary: "Off-peak weekdays; all day weekends",
+  },
+  {
+    mode: "tube-deep",
+    label: "Tube (Central / Victoria / Jubilee / Piccadilly / Bakerloo)",
+    restriction: "no",
+    summary: "Non-folding bikes never permitted — deep tunnels",
+  },
+  {
+    mode: "tube-northern",
+    label: "Tube (Northern line)",
+    restriction: "partial",
+    summary:
+      "Above-ground outer sections only: High Barnet/Mill Hill East north of East Finchley; Edgware branch north of Golders Green",
+  },
+  {
+    mode: "overground",
+    label: "Overground",
+    restriction: "off-peak",
+    summary: "Off-peak weekdays; all day weekends",
+  },
+  {
+    mode: "elizabeth-line",
+    label: "Elizabeth Line",
+    restriction: "off-peak",
+    summary: "Off-peak weekdays; all day weekends. E-bikes banned since March 2025",
+  },
+  {
+    mode: "dlr",
+    label: "DLR",
+    restriction: "off-peak",
+    summary: "Off-peak only; not at Bank station. E-bikes banned since March 2025",
+  },
+  {
+    mode: "national-rail",
+    label: "National Rail",
+    restriction: "off-peak",
+    summary: "Off-peak; may require advance reservation. E-bikes still permitted off-peak",
+  },
   { mode: "river", label: "River / Boat", restriction: "yes", summary: "Bikes permitted at all times" },
 ];
 
-export const PEAK_HOURS_TEXT = "07:30–09:30 and 16:00–19:00, Monday–Friday (excluding bank holidays)";
+export const PEAK_HOURS_TEXT =
+  "07:30–09:30 and 16:00–19:00, Monday–Friday (excluding bank holidays)";
 
 export function isLegViableNow(
   mode: string,
   lineId?: string,
+  fromName?: string,
+  toName?: string,
   date: Date = new Date()
 ): boolean {
-  const restriction = getBikeRestriction(mode, lineId);
-  if (restriction.allowed === "yes" || restriction.allowed === "partial") return true;
+  const restriction = getBikeRestriction(mode, lineId, fromName, toName);
+  if (restriction.allowed === "yes") return true;
   if (restriction.allowed === "no") return false;
+  if (restriction.allowed === "partial") return false; // shouldn't happen anymore
   // off-peak: viable only if not currently peak
   return !getPeakStatus(date).isPeak;
 }
 
 export function isJourneyViableNow(
-  legs: Array<{ mode: string; lineId?: string }>,
+  legs: Array<{ mode: string; lineId?: string; fromName?: string; toName?: string }>,
   date: Date = new Date()
 ): boolean {
-  return legs.every((leg) => isLegViableNow(leg.mode, leg.lineId, date));
+  return legs.every((leg) =>
+    isLegViableNow(leg.mode, leg.lineId, leg.fromName, leg.toName, date)
+  );
 }
