@@ -1,5 +1,22 @@
 import { isJourneyViableNow, isLegViableNow, getPeakStatus } from "./bikeRules";
 
+export interface PlanningTime {
+  mode: "now" | "depart" | "arrive";
+  date: string; // YYYYMMDD
+  time: string; // HHMM
+}
+
+/** Convert a PlanningTime to a JS Date for peak-status and viability checks. */
+export function planningTimeToDate(pt?: PlanningTime): Date {
+  if (!pt || pt.mode === "now" || !pt.date || !pt.time) return new Date();
+  const year = parseInt(pt.date.slice(0, 4));
+  const month = parseInt(pt.date.slice(4, 6)) - 1;
+  const day = parseInt(pt.date.slice(6, 8));
+  const hours = parseInt(pt.time.slice(0, 2));
+  const mins = parseInt(pt.time.slice(2, 4));
+  return new Date(year, month, day, hours, mins);
+}
+
 export interface Place {
   id: string;
   name: string;
@@ -397,7 +414,8 @@ function buildTflUrl(
   fromLon: number,
   toLat: number,
   toLon: number,
-  modes: string
+  modes: string,
+  planningTime?: PlanningTime
 ): string {
   const url = new URL(
     `https://api.tfl.gov.uk/Journey/JourneyResults/${fromLat}%2C${fromLon}/to/${toLat}%2C${toLon}`
@@ -406,6 +424,14 @@ function buildTflUrl(
   url.searchParams.set("walkingSpeed", "fast");
   url.searchParams.set("journeyPreference", "LeastTime");
   url.searchParams.set("alternativeJourneys", "true");
+  if (planningTime && planningTime.mode !== "now" && planningTime.date && planningTime.time) {
+    url.searchParams.set("date", planningTime.date);
+    url.searchParams.set("time", planningTime.time);
+    url.searchParams.set(
+      "timeIs",
+      planningTime.mode === "arrive" ? "Arriving" : "Departing"
+    );
+  }
   return url.toString();
 }
 
@@ -493,18 +519,18 @@ async function findMaxSingleTransitJourneys(
   toLon: number,
   fromLabel: string,
   toLabel: string,
-  bikeFriendlyModes: string
+  bikeFriendlyModes: string,
+  planningTime?: PlanningTime
 ): Promise<Journey[]> {
   // Find viable stops near BOTH ends simultaneously
-  const isPeakNow = getPeakStatus().isPeak;
+  const checkDate = planningTimeToDate(planningTime);
+  const isPeakNow = getPeakStatus(checkDate).isPeak;
   const [originStops, destStops] = await Promise.all([
     findNearbyViableStops(fromLat, fromLon, 2500, isPeakNow),
     findNearbyViableStops(toLat, toLon, 2500, isPeakNow),
   ]);
 
   if (originStops.length === 0 || destStops.length === 0) return [];
-
-  const now = new Date();
 
   // Build a map: lineId → origin stops that serve it
   const lineToOriginStops = new Map<string, TflStopPoint[]>();
@@ -515,7 +541,7 @@ async function findMaxSingleTransitJourneys(
         stop.modes.includes("elizabeth-line") ? "elizabeth-line" :
         stop.modes.includes("dlr") ? "dlr" :
         stop.modes.includes("national-rail") ? "national-rail" : "tube";
-      if (!isLegViableNow(primaryMode, line.id, undefined, undefined, now)) continue;
+      if (!isLegViableNow(primaryMode, line.id, undefined, undefined, checkDate)) continue;
       if (!lineToOriginStops.has(line.id)) lineToOriginStops.set(line.id, []);
       lineToOriginStops.get(line.id)!.push(stop);
     }
@@ -562,7 +588,7 @@ async function findMaxSingleTransitJourneys(
   const results = await Promise.all(
     uniquePairs.slice(0, 4).map(async (pair, idx) => {
       const journeysToStop = await fetchTflJourneys(
-        buildTflUrl(pair.origin.lat, pair.origin.lon, pair.dest.lat, pair.dest.lon, bikeFriendlyModes),
+        buildTflUrl(pair.origin.lat, pair.origin.lon, pair.dest.lat, pair.dest.lon, bikeFriendlyModes, planningTime),
         600 + idx * 10
       );
 
@@ -573,7 +599,7 @@ async function findMaxSingleTransitJourneys(
       });
 
       if (!singleLeg) return null;
-      if (!isJourneyViableNow(singleLeg.legs, now)) return null;
+      if (!isJourneyViableNow(singleLeg.legs, checkDate)) return null;
 
       // Prepend cycling leg: origin → boarding stop
       const cycleToLeg: RouteLeg = {
@@ -628,12 +654,15 @@ export async function planRoute(
   toLat: number,
   toLon: number,
   fromName?: string,
-  toName?: string
+  toName?: string,
+  planningTime?: PlanningTime
 ): Promise<RouteResponse> {
   const fromLabel = fromName ?? `${fromLat}, ${fromLon}`;
   const toLabel = toName ?? `${toLat}, ${toLon}`;
 
-  const { isPeak } = getPeakStatus();
+  // Use the planned date for peak status and viability checks
+  const checkDate = planningTimeToDate(planningTime);
+  const { isPeak } = getPeakStatus(checkDate);
 
   // All transit modes — direct TfL routing, will be viability-filtered
   const ALL_MODES =
@@ -654,16 +683,16 @@ export async function planRoute(
     singleTransitJourneys,
   ] = await Promise.all([
     // Standard TfL routing (full mode set)
-    fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, ALL_MODES), 0),
+    fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, ALL_MODES, planningTime), 0),
     // Bike-friendly routing (no bus; TfL adds walks → we convert to cycling)
-    fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, BIKE_FRIENDLY_MODES), 100),
+    fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, BIKE_FRIENDLY_MODES, planningTime), 100),
     // Cycle-only from TfL
-    fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, "cycle,walking"), 200),
+    fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, "cycle,walking", planningTime), 200),
     // Viable stops near destination (for "transit then cycle" appending)
     findNearbyViableStops(toLat, toLon, 2000, isPeak),
     // Best "cycle → 1 transit leg → cycle" option (maximises transit coverage)
     findMaxSingleTransitJourneys(
-      fromLat, fromLon, toLat, toLon, fromLabel, toLabel, BIKE_FRIENDLY_MODES
+      fromLat, fromLon, toLat, toLon, fromLabel, toLabel, BIKE_FRIENDLY_MODES, planningTime
     ),
   ]);
 
@@ -672,7 +701,7 @@ export async function planRoute(
     await Promise.all(
       nearbyDestStops.slice(0, 5).map(async (stop, idx) => {
         const journeysToStop = await fetchTflJourneys(
-          buildTflUrl(fromLat, fromLon, stop.lat, stop.lon, BIKE_FRIENDLY_MODES),
+          buildTflUrl(fromLat, fromLon, stop.lat, stop.lon, BIKE_FRIENDLY_MODES, planningTime),
           300 + idx * 10
         );
         const cycleDist = Math.round(
@@ -695,8 +724,7 @@ export async function planRoute(
   ];
 
   const totalCount = allCandidates.length;
-  const now = new Date();
-  const viable = allCandidates.filter((j) => isJourneyViableNow(j.legs, now));
+  const viable = allCandidates.filter((j) => isJourneyViableNow(j.legs, checkDate));
 
   const deduped = deduplicateJourneys(viable).sort(
     (a, b) => a.totalDurationMinutes - b.totalDurationMinutes

@@ -1,31 +1,64 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { SearchBox } from "@/components/SearchBox";
 import { JourneyCard } from "@/components/JourneyCard";
 import { Map } from "@/components/Map";
 import { BikeRulesPanel } from "@/components/BikeRulesPanel";
-import { planRoute, type Place, type Journey } from "@/lib/transit";
+import { planRoute, type Place, type Journey, type PlanningTime } from "@/lib/transit";
 import { getPeakStatus } from "@/lib/bikeRules";
 import { Bike, Compass, Clock, AlertTriangle } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+function nowTimeStr() {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() + 15);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
 
 export default function Home() {
   const [fromPlace, setFromPlace] = useState<Place | null>(null);
   const [toPlace, setToPlace] = useState<Place | null>(null);
   const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(null);
-  const [peakStatus, setPeakStatus] = useState(() => getPeakStatus());
 
+  // Planning time state
+  const [timeMode, setTimeMode] = useState<"now" | "depart" | "arrive">("now");
+  const [planDate, setPlanDate] = useState(todayStr);
+  const [planTime, setPlanTime] = useState(nowTimeStr);
+
+  // Live peak status (updates every minute)
+  const [livePeakStatus, setLivePeakStatus] = useState(() => getPeakStatus());
   useEffect(() => {
-    const interval = setInterval(() => {
-      setPeakStatus(getPeakStatus());
-    }, 60000);
+    const interval = setInterval(() => setLivePeakStatus(getPeakStatus()), 60000);
     return () => clearInterval(interval);
   }, []);
+
+  // Build the PlanningTime object for the query
+  const planningTime = useMemo<PlanningTime>(() => ({
+    mode: timeMode,
+    date: planDate.replace(/-/g, ""),       // YYYYMMDD
+    time: planTime.replace(":", ""),         // HHMM
+  }), [timeMode, planDate, planTime]);
+
+  // Peak status at the planned time (or live if "now")
+  const displayPeakStatus = useMemo(() => {
+    if (timeMode === "now") return livePeakStatus;
+    const [y, m, d] = planDate.split("-").map(Number);
+    const [h, min] = planTime.split(":").map(Number);
+    return getPeakStatus(new Date(y, m - 1, d, h, min));
+  }, [timeMode, planDate, planTime, livePeakStatus]);
 
   const shouldPlanRoute = !!fromPlace && !!toPlace;
 
   const { data: routeData, isLoading: isRouting } = useQuery({
-    queryKey: ["plan-route", fromPlace?.lat, fromPlace?.lon, toPlace?.lat, toPlace?.lon],
+    queryKey: [
+      "plan-route",
+      fromPlace?.lat, fromPlace?.lon,
+      toPlace?.lat, toPlace?.lon,
+      timeMode, planDate, planTime,
+    ],
     queryFn: () =>
       planRoute(
         fromPlace!.lat,
@@ -33,10 +66,11 @@ export default function Home() {
         toPlace!.lat,
         toPlace!.lon,
         fromPlace!.name,
-        toPlace!.name
+        toPlace!.name,
+        planningTime
       ),
     enabled: shouldPlanRoute,
-    staleTime: 5 * 60 * 1000,
+    staleTime: timeMode === "now" ? 2 * 60 * 1000 : 10 * 60 * 1000,
   });
 
   useEffect(() => {
@@ -66,26 +100,29 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Peak/Off-peak indicator */}
+          {/* Peak/Off-peak indicator — reflects planned time when set */}
           <div
             className={`flex items-center gap-2 px-3 py-2 rounded-lg mb-4 text-xs font-medium ${
-              peakStatus.isPeak
+              displayPeakStatus.isPeak
                 ? "bg-amber-50 text-amber-800 border border-amber-200"
                 : "bg-green-50 text-green-800 border border-green-200"
             }`}
             data-testid="status-peak-indicator"
           >
-            {peakStatus.isPeak ? (
+            {displayPeakStatus.isPeak ? (
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
             ) : (
               <Clock className="w-3.5 h-3.5 shrink-0" />
             )}
             <span>
-              {peakStatus.label}
-              {peakStatus.isPeak && (
+              {displayPeakStatus.label}
+              {displayPeakStatus.isPeak && (
                 <span className="font-normal ml-1 opacity-80">
-                  · restrictions lift at {peakStatus.nextChange}
+                  · restrictions lift at {displayPeakStatus.nextChange}
                 </span>
+              )}
+              {timeMode !== "now" && (
+                <span className="font-normal ml-1 opacity-70">· at planned time</span>
               )}
             </span>
           </div>
@@ -108,6 +145,42 @@ export default function Home() {
                 setSelectedJourneyId(null);
               }}
             />
+          </div>
+
+          {/* Departure / arrival time picker */}
+          <div className="mt-3">
+            <div className="flex bg-muted rounded-lg p-0.5 gap-0.5 text-xs">
+              {(["now", "depart", "arrive"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setTimeMode(m)}
+                  className={`flex-1 py-1.5 rounded-md font-medium transition-all ${
+                    timeMode === m
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {m === "now" ? "Leave now" : m === "depart" ? "Leave at" : "Arrive by"}
+                </button>
+              ))}
+            </div>
+            {timeMode !== "now" && (
+              <div className="flex gap-2 mt-2">
+                <input
+                  type="date"
+                  value={planDate}
+                  min={todayStr()}
+                  onChange={(e) => setPlanDate(e.target.value)}
+                  className="flex-1 text-xs border border-border rounded-lg px-2.5 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <input
+                  type="time"
+                  value={planTime}
+                  onChange={(e) => setPlanTime(e.target.value)}
+                  className="w-24 text-xs border border-border rounded-lg px-2.5 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -153,8 +226,8 @@ export default function Home() {
                     </p>
                     <p className="text-sm mt-1">
                       {routeData.filteredCount > 0
-                        ? peakStatus.isPeak
-                          ? `All ${routeData.filteredCount} routes have bike restrictions during peak hours. Try again after ${peakStatus.nextChange}.`
+                        ? displayPeakStatus.isPeak
+                          ? `All ${routeData.filteredCount} routes have bike restrictions during peak hours. Try again after ${displayPeakStatus.nextChange}.`
                           : "The available routes use modes that don't allow bikes. Try different locations."
                         : "Try different locations in London."}
                     </p>
@@ -173,7 +246,7 @@ export default function Home() {
                       <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
                         <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                         <span>
-                          {routeData.filteredCount} route{routeData.filteredCount !== 1 ? "s were" : " was"} hidden — {peakStatus.isPeak ? "bike restrictions apply during peak hours" : "they include modes where bikes aren't allowed"}.
+                          {routeData.filteredCount} route{routeData.filteredCount !== 1 ? "s were" : " was"} hidden — {displayPeakStatus.isPeak ? "bike restrictions apply during peak hours" : "they include modes where bikes aren't allowed"}.
                         </span>
                       </div>
                     )}

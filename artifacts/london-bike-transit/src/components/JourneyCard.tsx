@@ -74,9 +74,21 @@ function RestrictionBadge({ allowed, label }: { allowed: string; label: string }
   );
 }
 
+function formatTime(iso?: string): string | null {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+  } catch {
+    return null;
+  }
+}
+
 export function JourneyCard({ journey, isSelected, onClick }: JourneyCardProps) {
   const [expandedLeg, setExpandedLeg] = useState<number | null>(null);
   const timeSaved = journey.originalDurationMinutes - journey.totalDurationMinutes;
+  const depTime = formatTime(journey.departureTime);
+  const arrTime = formatTime(journey.arrivalTime);
 
   const restrictions = journey.legs.map((leg) =>
     getBikeRestriction(leg.mode, leg.lineId, leg.fromName, leg.toName)
@@ -100,11 +112,20 @@ export function JourneyCard({ journey, isSelected, onClick }: JourneyCardProps) 
     >
       <div className="p-4" onClick={onClick}>
         <div className="flex justify-between items-start mb-3">
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold tracking-tight">
-              {journey.totalDurationMinutes}
-            </span>
-            <span className="text-muted-foreground font-medium">min</span>
+          <div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold tracking-tight">
+                {journey.totalDurationMinutes}
+              </span>
+              <span className="text-muted-foreground font-medium">min</span>
+            </div>
+            {depTime && arrTime && (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-xs font-semibold text-foreground">{depTime}</span>
+                <span className="text-xs text-muted-foreground">→</span>
+                <span className="text-xs font-semibold text-foreground">{arrTime}</span>
+              </div>
+            )}
           </div>
           <div className="flex flex-col items-end gap-1">
             {timeSaved > 0 && (
