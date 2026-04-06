@@ -480,6 +480,148 @@ async function findNearbyViableStops(
   }
 }
 
+/**
+ * Finds stops near both origin and destination that share a viable transit line,
+ * then plans the transit leg station-to-station and wraps it with cycling legs
+ * on each side. This guarantees a "cycle → 1 transit leg → cycle" journey that
+ * maximises the distance covered by transit between the two points.
+ */
+async function findMaxSingleTransitJourneys(
+  fromLat: number,
+  fromLon: number,
+  toLat: number,
+  toLon: number,
+  fromLabel: string,
+  toLabel: string,
+  bikeFriendlyModes: string
+): Promise<Journey[]> {
+  // Find viable stops near BOTH ends simultaneously
+  const isPeakNow = getPeakStatus().isPeak;
+  const [originStops, destStops] = await Promise.all([
+    findNearbyViableStops(fromLat, fromLon, 2500, isPeakNow),
+    findNearbyViableStops(toLat, toLon, 2500, isPeakNow),
+  ]);
+
+  if (originStops.length === 0 || destStops.length === 0) return [];
+
+  const now = new Date();
+
+  // Build a map: lineId → origin stops that serve it
+  const lineToOriginStops = new Map<string, TflStopPoint[]>();
+  for (const stop of originStops) {
+    for (const line of stop.lines) {
+      const primaryMode =
+        stop.modes.includes("overground") ? "overground" :
+        stop.modes.includes("elizabeth-line") ? "elizabeth-line" :
+        stop.modes.includes("dlr") ? "dlr" :
+        stop.modes.includes("national-rail") ? "national-rail" : "tube";
+      if (!isLegViableNow(primaryMode, line.id, undefined, undefined, now)) continue;
+      if (!lineToOriginStops.has(line.id)) lineToOriginStops.set(line.id, []);
+      lineToOriginStops.get(line.id)!.push(stop);
+    }
+  }
+
+  // Find (originStop, destStop, sharedLineId) triples, ranked by least total cycling
+  type StopPair = {
+    origin: TflStopPoint;
+    dest: TflStopPoint;
+    lineId: string;
+    cycleToDist: number;   // origin → boarding stop (metres)
+    cycleFromDist: number; // alighting stop → destination (metres)
+  };
+
+  const pairs: StopPair[] = [];
+  for (const dStop of destStops) {
+    for (const dLine of dStop.lines) {
+      const oStops = lineToOriginStops.get(dLine.id);
+      if (!oStops) continue;
+      for (const oStop of oStops) {
+        if (oStop.id === dStop.id) continue;
+        const cycleToDist = Math.round(haversineMetres(fromLat, fromLon, oStop.lat, oStop.lon) * 1.4);
+        const cycleFromDist = Math.round(haversineMetres(dStop.lat, dStop.lon, toLat, toLon) * 1.4);
+        pairs.push({ origin: oStop, dest: dStop, lineId: dLine.id, cycleToDist, cycleFromDist });
+      }
+    }
+  }
+
+  if (pairs.length === 0) return [];
+
+  // Sort: minimise total cycling distance (= maximise transit distance)
+  pairs.sort((a, b) => (a.cycleToDist + a.cycleFromDist) - (b.cycleToDist + b.cycleFromDist));
+
+  // Deduplicate on (originStopId, destStopId) — no point trying same pair twice
+  const seenPairs = new Set<string>();
+  const uniquePairs = pairs.filter((p) => {
+    const key = `${p.origin.id}→${p.dest.id}`;
+    if (seenPairs.has(key)) return false;
+    seenPairs.add(key);
+    return true;
+  });
+
+  // For each top pair, plan transit station → station and wrap with cycling legs
+  const results = await Promise.all(
+    uniquePairs.slice(0, 4).map(async (pair, idx) => {
+      const journeysToStop = await fetchTflJourneys(
+        buildTflUrl(pair.origin.lat, pair.origin.lon, pair.dest.lat, pair.dest.lon, bikeFriendlyModes),
+        600 + idx * 10
+      );
+
+      // Keep only journeys that have exactly 1 transit (non-cycling) leg
+      const singleLeg = journeysToStop.find((j) => {
+        const transitLegs = j.legs.filter((l) => l.mode !== "cycle");
+        return transitLegs.length === 1;
+      });
+
+      if (!singleLeg) return null;
+      if (!isJourneyViableNow(singleLeg.legs, now)) return null;
+
+      // Prepend cycling leg: origin → boarding stop
+      const cycleToLeg: RouteLeg = {
+        mode: "cycle",
+        instruction: `Cycle to ${pair.origin.commonName}`,
+        durationMinutes: cycleDuration(pair.cycleToDist),
+        distanceMeters: pair.cycleToDist,
+        fromName: fromLabel,
+        toName: pair.origin.commonName,
+        isSubstituted: false,
+      };
+
+      // Append cycling leg: alighting stop → destination
+      const cycleFromLeg: RouteLeg = {
+        mode: "cycle",
+        instruction: `Cycle to ${toLabel}`,
+        durationMinutes: cycleDuration(pair.cycleFromDist),
+        distanceMeters: pair.cycleFromDist,
+        fromName: pair.dest.commonName,
+        toName: toLabel,
+        isSubstituted: false,
+      };
+
+      const allLegs = [cycleToLeg, ...singleLeg.legs, cycleFromLeg];
+      const cycleToMin = cycleToLeg.durationMinutes;
+      const cycleFromMin = cycleFromLeg.durationMinutes;
+      const totalDuration = singleLeg.totalDurationMinutes + cycleToMin + cycleFromMin;
+      const cyclingDuration = singleLeg.cyclingDurationMinutes + cycleToMin + cycleFromMin;
+
+      const transitModes = [
+        ...new Set(singleLeg.legs.map((l) => l.mode).filter((m) => m !== "cycle")),
+      ];
+      const summary = `Cycle + ${transitModes.join(" + ")} + cycle`;
+
+      return {
+        ...singleLeg,
+        id: `journey-single-${idx}`,
+        legs: allLegs,
+        totalDurationMinutes: totalDuration,
+        cyclingDurationMinutes: cyclingDuration,
+        summary,
+      } as Journey;
+    })
+  );
+
+  return results.filter((j): j is Journey => j !== null);
+}
+
 export async function planRoute(
   fromLat: number,
   fromLon: number,
@@ -503,35 +645,39 @@ export async function planRoute(
     ? "tube,national-rail,river-bus,walking"
     : "tube,overground,national-rail,elizabeth-line,dlr,river-bus,walking";
 
-  // ── Phase 1: standard TfL calls + StopPoint lookup, all in parallel ──────
-  const [allResults, bikeFriendlyResults, cycleResults, nearbyStops] =
-    await Promise.all([
-      fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, ALL_MODES), 0),
-      fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, BIKE_FRIENDLY_MODES), 100),
-      fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, "cycle,walking"), 200),
-      // Find viable transit stops within 2 km of the destination
-      findNearbyViableStops(toLat, toLon, 2000, isPeak),
-    ]);
+  // ── Phase 1: all calls fire in parallel ───────────────────────────────────
+  const [
+    allResults,
+    bikeFriendlyResults,
+    cycleResults,
+    nearbyDestStops,
+    singleTransitJourneys,
+  ] = await Promise.all([
+    // Standard TfL routing (full mode set)
+    fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, ALL_MODES), 0),
+    // Bike-friendly routing (no bus; TfL adds walks → we convert to cycling)
+    fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, BIKE_FRIENDLY_MODES), 100),
+    // Cycle-only from TfL
+    fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, "cycle,walking"), 200),
+    // Viable stops near destination (for "transit then cycle" appending)
+    findNearbyViableStops(toLat, toLon, 2000, isPeak),
+    // Best "cycle → 1 transit leg → cycle" option (maximises transit coverage)
+    findMaxSingleTransitJourneys(
+      fromLat, fromLon, toLat, toLon, fromLabel, toLabel, BIKE_FRIENDLY_MODES
+    ),
+  ]);
 
-  // ── Phase 2: for each nearby viable stop, plan origin → stop, then append
-  //            a cycling leg from that stop to the final destination.
-  //            This is the "get as close as possible by transit, then cycle"
-  //            strategy that guarantees mixed options even when no direct
-  //            end-to-end viable route exists. ─────────────────────────────
+  // ── Phase 2: for each nearby dest stop, plan origin → stop, append cycle ──
   const viaStopJourneys = (
     await Promise.all(
-      nearbyStops.slice(0, 5).map(async (stop, idx) => {
+      nearbyDestStops.slice(0, 5).map(async (stop, idx) => {
         const journeysToStop = await fetchTflJourneys(
           buildTflUrl(fromLat, fromLon, stop.lat, stop.lon, BIKE_FRIENDLY_MODES),
           300 + idx * 10
         );
-
-        // Road-adjusted cycling distance from this stop to the final destination
         const cycleDist = Math.round(
           haversineMetres(stop.lat, stop.lon, toLat, toLon) * 1.4
         );
-
-        // Take the best 2 journeys to this stop and append the final cycle leg
         return journeysToStop.slice(0, 2).map((j) =>
           appendCycleLeg(j, stop.commonName, toLabel, cycleDist)
         );
@@ -539,25 +685,24 @@ export async function planRoute(
     )
   ).flat();
 
-  // ── Phase 3: pool all candidates, filter viable, deduplicate, sort ───────
+  // ── Phase 3: pool, filter, deduplicate, sort ──────────────────────────────
   const allCandidates = [
     ...allResults,
     ...bikeFriendlyResults,
     ...cycleResults,
     ...viaStopJourneys,
+    ...singleTransitJourneys,
   ];
 
   const totalCount = allCandidates.length;
   const now = new Date();
-
   const viable = allCandidates.filter((j) => isJourneyViableNow(j.legs, now));
 
-  // Deduplicate: for journeys with same transit sequence, keep the fastest
   const deduped = deduplicateJourneys(viable).sort(
     (a, b) => a.totalDurationMinutes - b.totalDurationMinutes
   );
 
-  // Always guarantee a cycle-only option
+  // Always guarantee a cycle-only fallback
   const hasCycleOnly = deduped.some((j) => j.summary === "Cycle only");
   if (!hasCycleOnly) {
     const fallback = synthesisCycleJourney(
