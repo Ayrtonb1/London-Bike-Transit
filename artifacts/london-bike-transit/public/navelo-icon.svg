@@ -1,0 +1,11 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Green rounded background (safe-zone friendly — icon fills full square for maskable) -->
+  <rect width="512" height="512" rx="96" fill="#16a34a"/>
+  <!-- Bike icon scaled from lucide 24x24 → 352×352, centered at offset 80 -->
+  <g transform="translate(80,80) scale(14.667)" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <circle cx="18.5" cy="17.5" r="3.5"/>
+    <circle cx="5.5" cy="17.5" r="3.5"/>
+    <circle cx="15" cy="5" r="1"/>
+    <path d="M12 17.5V14l-3-3 4-3 2 3h2"/>
+  </g>
+</svg>

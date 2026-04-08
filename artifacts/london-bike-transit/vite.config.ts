@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { VitePWA } from "vite-plugin-pwa";
 
 const rawPort = process.env.PORT;
 
@@ -32,6 +33,63 @@ export default defineConfig({
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
+    VitePWA({
+      registerType: "autoUpdate",
+      injectRegister: "auto",
+      manifest: {
+        name: "Navelo",
+        short_name: "Navelo",
+        description: "London bike transit — cycle-friendly routes using TfL",
+        theme_color: "#16a34a",
+        background_color: "#ffffff",
+        display: "standalone",
+        orientation: "portrait",
+        icons: [
+          { src: "icon-192.png", sizes: "192x192", type: "image/png" },
+          {
+            src: "icon-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any maskable",
+          },
+          { src: "apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+        ],
+      },
+      workbox: {
+        // Pre-cache all build assets (app shell)
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        runtimeCaching: [
+          {
+            // TfL Journey Planner — network-first, 5-min cache
+            urlPattern: /^https:\/\/api\.tfl\.gov\.uk\/.*/i,
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "tfl-cache",
+              expiration: { maxEntries: 50, maxAgeSeconds: 300 },
+            },
+          },
+          {
+            // Nominatim geocoding — cache-first, 24-hour cache
+            urlPattern: /^https:\/\/nominatim\.openstreetmap\.org\/.*/i,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "geocoder-cache",
+              expiration: { maxEntries: 200, maxAgeSeconds: 86400 },
+            },
+          },
+          {
+            // Map tiles — stale-while-revalidate, 7-day cache
+            urlPattern: /^https:\/\/.*\.basemaps\.cartocdn\.com\/.*/i,
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "map-tiles-cache",
+              expiration: { maxEntries: 500, maxAgeSeconds: 604800 },
+            },
+          },
+        ],
+      },
+      devOptions: { enabled: false },
+    }),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [
