@@ -56,6 +56,7 @@ export interface Journey {
   departureTime?: string;
   arrivalTime?: string;
   summary: string;
+  farePence?: number; // Oyster/contactless fare in pence, if TfL returned it
 }
 
 export interface RouteResponse {
@@ -241,6 +242,8 @@ type TflJourney = {
   legs: TflLeg[];
   startDateTime?: string;
   arrivalDateTime?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  fare?: { totalCost?: number; [k: string]: any };
 };
 
 // TfL StopPoint structure
@@ -315,14 +318,49 @@ function buildJourney(journey: TflJourney, jIdx: number): Journey {
     totalDurationMinutes: totalDuration,
     originalDurationMinutes: originalDuration,
     cyclingDurationMinutes: cyclingDuration,
-    legs,
+    legs: mergeConsecutiveCycleLegs(legs),
     departureTime: journey.startDateTime,
     arrivalTime: journey.arrivalDateTime,
     summary,
+    farePence: journey.fare?.totalCost ?? undefined,
   };
 }
 
-/** Append a final cycling leg to an existing journey (transit → cycle to destination) */
+/**
+ * Merge adjacent cycling legs into a single leg.
+ * Avoids UI clutter from short "walk converted to cycle" stubs sitting
+ * immediately beside explicit cycling legs added by prependCycleLeg /
+ * appendCycleLeg.
+ */
+function mergeConsecutiveCycleLegs(legs: RouteLeg[]): RouteLeg[] {
+  const result: RouteLeg[] = [];
+  for (const leg of legs) {
+    const prev = result[result.length - 1];
+    if (prev && prev.mode === "cycle" && leg.mode === "cycle") {
+      // Merge: accumulate distance and duration, keep fromName of first leg
+      // and toName of the incoming leg. Keep isSubstituted only if BOTH are.
+      result[result.length - 1] = {
+        ...prev,
+        durationMinutes: prev.durationMinutes + leg.durationMinutes,
+        distanceMeters: prev.distanceMeters + leg.distanceMeters,
+        toName: leg.toName,
+        instruction: prev.isSubstituted && leg.isSubstituted
+          ? prev.instruction
+          : leg.isSubstituted
+          ? prev.instruction
+          : leg.instruction,
+        isSubstituted: prev.isSubstituted && leg.isSubstituted,
+        // Concatenate polylines if available
+        polyline: [...(prev.polyline ?? []), ...(leg.polyline ?? [])],
+      };
+    } else {
+      result.push(leg);
+    }
+  }
+  return result;
+}
+
+/** Prepend a cycling leg (cycle to boarding stop) and merge any resulting adjacent cycle legs. */
 function prependCycleLeg(
   journey: Journey,
   fromLabel: string,
@@ -339,7 +377,7 @@ function prependCycleLeg(
     toName: toStopName,
     isSubstituted: false,
   };
-  const allLegs = [cycleLeg, ...journey.legs];
+  const allLegs = mergeConsecutiveCycleLegs([cycleLeg, ...journey.legs]);
   const transitModes = [
     ...new Set(allLegs.map((l) => l.mode).filter((m) => m !== "cycle")),
   ];
@@ -356,6 +394,7 @@ function prependCycleLeg(
   };
 }
 
+/** Append a final cycling leg (cycle from alighting stop) and merge any adjacent cycle legs. */
 function appendCycleLeg(
   journey: Journey,
   fromStopName: string,
@@ -372,7 +411,7 @@ function appendCycleLeg(
     toName: toLabel,
     isSubstituted: false,
   };
-  const allLegs = [...journey.legs, cycleLeg];
+  const allLegs = mergeConsecutiveCycleLegs([...journey.legs, cycleLeg]);
   const transitModes = [
     ...new Set(allLegs.map((l) => l.mode).filter((m) => m !== "cycle")),
   ];
@@ -711,11 +750,19 @@ export async function planRoute(
   const ALL_MODES =
     "tube,bus,national-rail,overground,elizabeth-line,dlr,walking,river-bus";
 
-  // Bike-friendly modes: no bus; no off-peak-only services during peak
-  // Walking legs that TfL adds become cycling legs via buildJourney
+  // Bike-friendly modes: no bus; walking legs become cycling legs via buildJourney.
+  // Includes tube so TfL can suggest Circle/District/Met routes (then viability-filtered).
   const BIKE_FRIENDLY_MODES = isPeak
     ? "tube,national-rail,river-bus,walking"
     : "tube,overground,national-rail,elizabeth-line,dlr,river-bus,walking";
+
+  // Surface-transit modes: NO tube at all.
+  // Used for via-stop sub-journeys so TfL is forced to plan on Overground /
+  // National Rail / DLR — services that are actually bike-viable.
+  // Without this, TfL always prefers deep tube which then fails viability checks.
+  const SURFACE_BIKE_MODES = isPeak
+    ? "national-rail,river-bus,walking"
+    : "overground,national-rail,elizabeth-line,dlr,river-bus,walking";
 
   // ── Phase 1: all standard TfL calls + stop discovery, all in parallel ─────
   const [
@@ -743,12 +790,14 @@ export async function planRoute(
   ]);
 
   // ── Phase 2a: "ride to nearby destination stop, then cycle last mile" ─────
-  // Plan origin → each destination-nearby stop; append cycling to final dest.
+  // Uses SURFACE_BIKE_MODES (no tube) so TfL can't pick deep-tube routes
+  // that would be filtered out anyway — forcing it to return viable surface
+  // transit (Overground, National Rail, DLR, Elizabeth line).
   const viaDestStopJourneys = (
     await Promise.all(
       nearbyDestStops.slice(0, 5).map(async (stop, idx) => {
         const journeysToStop = await fetchTflJourneys(
-          buildTflUrl(fromLat, fromLon, stop.lat, stop.lon, BIKE_FRIENDLY_MODES, planningTime),
+          buildTflUrl(fromLat, fromLon, stop.lat, stop.lon, SURFACE_BIKE_MODES, planningTime),
           300 + idx * 10
         );
         const cycleDist = Math.round(
@@ -762,16 +811,14 @@ export async function planRoute(
   ).flat();
 
   // ── Phase 2b: "cycle first mile to nearby origin stop, then transit" ──────
-  // Route from each origin-nearby stop to the final destination; prepend
-  // a cycling leg from the true origin to that boarding stop.
-  // This is the KEY strategy for journeys where TfL's natural routing from
-  // raw coordinates always picks deep-tube — starting from a known viable
-  // station forces TfL to plan using only that station's lines.
+  // Start from a known viable station; use SURFACE_BIKE_MODES so TfL plans
+  // entirely on Overground/NR/DLR. Without this, TfL would still pick tube
+  // (faster but banned for bikes), leaving no viable routes after filtering.
   const viaOriginStopJourneys = (
     await Promise.all(
       nearbyOriginStops.slice(0, 5).map(async (stop, idx) => {
         const journeysFromStop = await fetchTflJourneys(
-          buildTflUrl(stop.lat, stop.lon, toLat, toLon, BIKE_FRIENDLY_MODES, planningTime),
+          buildTflUrl(stop.lat, stop.lon, toLat, toLon, SURFACE_BIKE_MODES, planningTime),
           400 + idx * 10
         );
         const cycleDist = Math.round(

@@ -126,6 +126,15 @@ export function JourneyCard({ journey, isSelected, onClick }: JourneyCardProps) 
                 <span className="text-xs font-semibold text-foreground">{arrTime}</span>
               </div>
             )}
+            {(journey.summary === "Cycle only" || journey.farePence !== undefined) && (
+              <div className="mt-1">
+                <span className="inline-block text-xs font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {journey.summary === "Cycle only"
+                    ? "Free"
+                    : `~£${(journey.farePence! / 100).toFixed(2)} Oyster`}
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex flex-col items-end gap-1">
             {timeSaved > 0 && (
