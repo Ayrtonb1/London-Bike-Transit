@@ -8,6 +8,10 @@ interface JourneyCardProps {
   journey: Journey;
   isSelected: boolean;
   onClick: () => void;
+  /** Duration of the cycle-only fallback journey — used as the consistent
+   *  baseline for the "X min faster" badge so all cards compare against the
+   *  same reference rather than each journey's own original TfL estimate. */
+  cycleOnlyMinutes?: number;
 }
 
 const TUBE_COLORS: Record<string, string> = {
@@ -84,9 +88,14 @@ function formatTime(iso?: string): string | null {
   }
 }
 
-export function JourneyCard({ journey, isSelected, onClick }: JourneyCardProps) {
+export function JourneyCard({ journey, isSelected, onClick, cycleOnlyMinutes }: JourneyCardProps) {
   const [expandedLeg, setExpandedLeg] = useState<number | null>(null);
-  const timeSaved = journey.originalDurationMinutes - journey.totalDurationMinutes;
+  // "Faster than cycling the whole way" — consistent baseline for all cards.
+  // Only show on non-cycle-only journeys where transit actually saves time.
+  const timeSaved =
+    journey.summary !== "Cycle only" && cycleOnlyMinutes != null
+      ? cycleOnlyMinutes - journey.totalDurationMinutes
+      : 0;
   const depTime = formatTime(journey.departureTime);
   const arrTime = formatTime(journey.arrivalTime);
 
@@ -140,7 +149,7 @@ export function JourneyCard({ journey, isSelected, onClick }: JourneyCardProps) 
             {timeSaved > 0 && (
               <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20 font-bold border-0 text-xs">
                 <Zap className="w-3 h-3 mr-1 fill-current" />
-                {timeSaved} min faster
+                {timeSaved} min vs cycling
               </Badge>
             )}
             {hasBan && (

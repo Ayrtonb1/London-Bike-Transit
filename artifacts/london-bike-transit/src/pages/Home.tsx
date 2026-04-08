@@ -6,7 +6,7 @@ import { Map } from "@/components/Map";
 import { BikeRulesPanel } from "@/components/BikeRulesPanel";
 import { planRoute, type Place, type Journey, type PlanningTime } from "@/lib/transit";
 import { getPeakStatus } from "@/lib/bikeRules";
-import { Bike, Compass, Clock, AlertTriangle } from "lucide-react";
+import { Bike, Compass, Clock, AlertTriangle, Navigation, ChevronLeft } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 function todayStr() {
@@ -22,6 +22,7 @@ export default function Home() {
   const [fromPlace, setFromPlace] = useState<Place | null>(null);
   const [toPlace, setToPlace] = useState<Place | null>(null);
   const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(null);
+  const [mobileTab, setMobileTab] = useState<"routes" | "map">("routes");
 
   // Planning time state
   const [timeMode, setTimeMode] = useState<"now" | "depart" | "arrive">("now");
@@ -76,6 +77,7 @@ export default function Home() {
   useEffect(() => {
     if (routeData?.journeys?.length) {
       setSelectedJourneyId(routeData.journeys[0].id);
+      setMobileTab("routes"); // return to route list when new results arrive
     } else {
       setSelectedJourneyId(null);
     }
@@ -84,10 +86,20 @@ export default function Home() {
   const selectedJourney: Journey | null =
     routeData?.journeys?.find((j) => j.id === selectedJourneyId) ?? null;
 
+  // The cycle-only journey is always the last fallback; its time is the
+  // consistent baseline for the "X min faster" badge across all cards.
+  const cycleOnlyMinutes: number | undefined = routeData?.journeys?.find(
+    (j) => j.summary === "Cycle only"
+  )?.totalDurationMinutes;
+
   return (
-    <div className="flex h-[100dvh] w-full overflow-hidden bg-background font-sans">
-      {/* Sidebar Panel */}
-      <div className="w-full md:w-[420px] shrink-0 border-r border-border bg-card flex flex-col z-20 shadow-2xl">
+    <div className="flex h-[100dvh] w-full overflow-hidden bg-background font-sans relative">
+      {/* Sidebar Panel — full-width on mobile; toggled by mobileTab */}
+      <div
+        className={`shrink-0 border-r border-border bg-card flex-col z-20 shadow-2xl w-full md:w-[420px] ${
+          mobileTab === "map" ? "hidden md:flex" : "flex"
+        }`}
+      >
         {/* Header */}
         <div className="p-6 pb-4 border-b border-border bg-background">
           <div className="flex items-center gap-3 mb-5">
@@ -247,6 +259,7 @@ export default function Home() {
                         key={journey.id}
                         journey={journey}
                         isSelected={selectedJourneyId === journey.id}
+                        cycleOnlyMinutes={cycleOnlyMinutes}
                         onClick={() => setSelectedJourneyId(journey.id)}
                       />
                     ))}
@@ -256,15 +269,41 @@ export default function Home() {
             )}
           </div>
         </ScrollArea>
+
+        {/* Mobile-only: "View on map" sticky button — shown when a journey is selected */}
+        {selectedJourney && (
+          <div className="md:hidden border-t border-border bg-background p-3 shrink-0">
+            <button
+              onClick={() => setMobileTab("map")}
+              className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl py-3 text-sm font-bold shadow-sm active:opacity-80 transition-opacity"
+            >
+              <Navigation className="w-4 h-4" />
+              View on map
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Map Area */}
-      <div className="flex-1 relative z-10 h-[100dvh]">
+      {/* Map Area — toggled on mobile by mobileTab */}
+      <div
+        className={`flex-1 relative z-10 h-[100dvh] ${
+          mobileTab === "routes" ? "hidden md:block" : "block"
+        }`}
+      >
         <Map
           fromPlace={fromPlace}
           toPlace={toPlace}
           selectedJourney={selectedJourney}
         />
+
+        {/* Mobile-only: "Routes" back button overlaid on the map */}
+        <button
+          onClick={() => setMobileTab("routes")}
+          className="md:hidden absolute top-4 left-4 z-[1000] bg-white text-foreground shadow-lg rounded-full pl-3 pr-4 py-2 text-sm font-semibold flex items-center gap-1 border border-border/30 active:opacity-70 transition-opacity"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Routes
+        </button>
       </div>
     </div>
   );
