@@ -39,6 +39,10 @@ export interface RouteLeg {
   distanceMeters: number;
   fromName: string;
   toName: string;
+  fromLat?: number;
+  fromLon?: number;
+  toLat?: number;
+  toLon?: number;
   originalMode?: string;
   isSubstituted?: boolean;
   lineId?: string;
@@ -301,6 +305,10 @@ function buildJourney(journey: TflJourney, jIdx: number): Journey {
       distanceMeters,
       fromName: leg.departurePoint?.commonName ?? "Start",
       toName: leg.arrivalPoint?.commonName ?? "End",
+      fromLat: leg.departurePoint?.lat,
+      fromLon: leg.departurePoint?.lon,
+      toLat: leg.arrivalPoint?.lat,
+      toLon: leg.arrivalPoint?.lon,
       originalMode: isSubstituted ? "walking" : undefined,
       isSubstituted,
       lineId,
@@ -344,6 +352,8 @@ function mergeConsecutiveCycleLegs(legs: RouteLeg[]): RouteLeg[] {
         durationMinutes: prev.durationMinutes + leg.durationMinutes,
         distanceMeters: prev.distanceMeters + leg.distanceMeters,
         toName: leg.toName,
+        toLat: leg.toLat,
+        toLon: leg.toLon,
         instruction: prev.isSubstituted && leg.isSubstituted
           ? prev.instruction
           : leg.isSubstituted
@@ -365,7 +375,11 @@ function prependCycleLeg(
   journey: Journey,
   fromLabel: string,
   toStopName: string,
-  distanceMeters: number
+  distanceMeters: number,
+  fromLat?: number,
+  fromLon?: number,
+  toLat?: number,
+  toLon?: number
 ): Journey {
   const durationMinutes = cycleDuration(distanceMeters);
   const cycleLeg: RouteLeg = {
@@ -375,6 +389,10 @@ function prependCycleLeg(
     distanceMeters,
     fromName: fromLabel,
     toName: toStopName,
+    fromLat,
+    fromLon,
+    toLat,
+    toLon,
     isSubstituted: false,
   };
   const allLegs = mergeConsecutiveCycleLegs([cycleLeg, ...journey.legs]);
@@ -399,7 +417,11 @@ function appendCycleLeg(
   journey: Journey,
   fromStopName: string,
   toLabel: string,
-  distanceMeters: number
+  distanceMeters: number,
+  fromLat?: number,
+  fromLon?: number,
+  toLat?: number,
+  toLon?: number
 ): Journey {
   const durationMinutes = cycleDuration(distanceMeters);
   const cycleLeg: RouteLeg = {
@@ -409,6 +431,10 @@ function appendCycleLeg(
     distanceMeters,
     fromName: fromStopName,
     toName: toLabel,
+    fromLat,
+    fromLon,
+    toLat,
+    toLon,
     isSubstituted: false,
   };
   const allLegs = mergeConsecutiveCycleLegs([...journey.legs, cycleLeg]);
@@ -691,6 +717,10 @@ async function findMaxSingleTransitJourneys(
         distanceMeters: pair.cycleToDist,
         fromName: fromLabel,
         toName: pair.origin.commonName,
+        fromLat,
+        fromLon,
+        toLat: pair.origin.lat,
+        toLon: pair.origin.lon,
         isSubstituted: false,
       };
 
@@ -702,6 +732,10 @@ async function findMaxSingleTransitJourneys(
         distanceMeters: pair.cycleFromDist,
         fromName: pair.dest.commonName,
         toName: toLabel,
+        fromLat: pair.dest.lat,
+        fromLon: pair.dest.lon,
+        toLat,
+        toLon,
         isSubstituted: false,
       };
 
@@ -804,7 +838,7 @@ export async function planRoute(
           haversineMetres(stop.lat, stop.lon, toLat, toLon) * 1.4
         );
         return journeysToStop.slice(0, 2).map((j) =>
-          appendCycleLeg(j, stop.commonName, toLabel, cycleDist)
+          appendCycleLeg(j, stop.commonName, toLabel, cycleDist, stop.lat, stop.lon, toLat, toLon)
         );
       })
     )
@@ -825,7 +859,7 @@ export async function planRoute(
           haversineMetres(fromLat, fromLon, stop.lat, stop.lon) * 1.4
         );
         return journeysFromStop.slice(0, 2).map((j) =>
-          prependCycleLeg(j, fromLabel, stop.commonName, cycleDist)
+          prependCycleLeg(j, fromLabel, stop.commonName, cycleDist, fromLat, fromLon, stop.lat, stop.lon)
         );
       })
     )

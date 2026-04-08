@@ -95,7 +95,7 @@ export default function Home() {
               <Bike className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight">Bike Transit</h1>
+              <h1 className="text-xl font-bold tracking-tight">Navelo</h1>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">London Edition</p>
             </div>
           </div>
@@ -242,14 +242,6 @@ export default function Home() {
                         {routeData.journeys.length} option{routeData.journeys.length !== 1 ? "s" : ""}
                       </span>
                     </div>
-                    {routeData.filteredCount > 0 && (
-                      <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
-                        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                        <span>
-                          {routeData.filteredCount} route{routeData.filteredCount !== 1 ? "s were" : " was"} hidden — {displayPeakStatus.isPeak ? "bike restrictions apply during peak hours" : "they include modes where bikes aren't allowed"}.
-                        </span>
-                      </div>
-                    )}
                     {routeData.journeys.map((journey) => (
                       <JourneyCard
                         key={journey.id}
