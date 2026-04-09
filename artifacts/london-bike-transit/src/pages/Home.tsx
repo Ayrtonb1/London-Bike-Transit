@@ -93,12 +93,36 @@ export default function Home() {
   )?.totalDurationMinutes;
 
   return (
-    <div className="flex h-[100dvh] w-full overflow-hidden bg-background font-sans relative">
-      {/* Sidebar Panel — full-width on mobile; toggled by mobileTab */}
+    <div className="relative h-[100dvh] w-full overflow-hidden bg-background font-sans md:flex">
+      {/* ── Map — always absolutely fills the screen on mobile so Leaflet can
+           measure a real container; on desktop becomes a flex-1 sidebar partner */}
+      <div className="absolute inset-0 md:static md:flex-1 md:order-last">
+        <Map
+          fromPlace={fromPlace}
+          toPlace={toPlace}
+          selectedJourney={selectedJourney}
+        />
+
+        {/* Mobile-only: "Routes" back button overlaid on the map */}
+        <button
+          onClick={() => setMobileTab("routes")}
+          className={`md:hidden absolute top-4 left-4 z-[1000] bg-white text-foreground shadow-lg rounded-full pl-3 pr-4 py-2 text-sm font-semibold flex items-center gap-1 border border-border/30 active:opacity-70 transition-opacity ${
+            mobileTab === "map" ? "flex" : "hidden"
+          }`}
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Routes
+        </button>
+      </div>
+
+      {/* ── Routes panel — slides over the map on mobile; fixed sidebar on desktop.
+           Uses translate instead of display:none so the map stays mounted & sized. */}
       <div
-        className={`shrink-0 border-r border-border bg-card flex-col z-20 shadow-2xl w-full md:w-[420px] ${
-          mobileTab === "map" ? "hidden md:flex" : "flex"
-        }`}
+        className={`absolute inset-0 z-20 flex flex-col w-full
+          md:static md:z-auto md:w-[420px] md:min-w-[420px] md:h-[100dvh] md:shrink-0
+          border-r border-border bg-card shadow-2xl
+          transition-transform duration-300 ease-in-out
+          ${mobileTab === "map" ? "translate-x-full md:translate-x-0" : "translate-x-0"}`}
       >
         {/* Header */}
         <div className="p-6 pb-4 border-b border-border bg-background">
@@ -282,29 +306,6 @@ export default function Home() {
             </button>
           </div>
         )}
-      </div>
-
-      {/* Map Area — toggled on mobile by mobileTab */}
-      <div
-        className={`flex-1 relative z-10 h-[100dvh] ${
-          mobileTab === "routes" ? "hidden md:block" : "block"
-        }`}
-      >
-        <Map
-          fromPlace={fromPlace}
-          toPlace={toPlace}
-          selectedJourney={selectedJourney}
-          isVisible={mobileTab === "map"}
-        />
-
-        {/* Mobile-only: "Routes" back button overlaid on the map */}
-        <button
-          onClick={() => setMobileTab("routes")}
-          className="md:hidden absolute top-4 left-4 z-[1000] bg-white text-foreground shadow-lg rounded-full pl-3 pr-4 py-2 text-sm font-semibold flex items-center gap-1 border border-border/30 active:opacity-70 transition-opacity"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          Routes
-        </button>
       </div>
     </div>
   );
