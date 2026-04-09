@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, Fragment } from "react";
 import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, useMap } from "react-leaflet";
 import L from "leaflet";
 import type { Journey, Place } from "@/lib/transit";
@@ -104,13 +104,14 @@ export function Map({ fromPlace, toPlace, selectedJourney }: MapProps) {
       zoomControl={false}
     >
       <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        maxZoom={19}
       />
 
       <MapUpdater fromPlace={fromPlace} toPlace={toPlace} selectedJourney={selectedJourney} />
 
-      {/* ── Route lines ──────────────────────────────────────────────────── */}
+      {/* ── Route lines — white casing first, then coloured line on top ───── */}
       {selectedJourney?.legs.map((leg, i) => {
         const color = getLegColor(leg.mode, leg.lineId);
         const isCycle = leg.mode === "cycle";
@@ -130,18 +131,31 @@ export function Map({ fromPlace, toPlace, selectedJourney }: MapProps) {
         if (!positions) return null;
 
         return (
-          <Polyline
-            key={`line-${i}`}
-            positions={positions}
-            pathOptions={{
-              color,
-              weight: isCycle ? 4 : 5,
-              opacity: 0.85,
-              dashArray: isCycle ? "8 7" : undefined,
-              lineCap: "round",
-              lineJoin: "round",
-            }}
-          />
+          <Fragment key={`leg-${i}`}>
+            {/* White casing drawn first so it sits behind */}
+            <Polyline
+              positions={positions}
+              pathOptions={{
+                color: "white",
+                weight: isCycle ? 8 : 10,
+                opacity: 0.9,
+                lineCap: "round",
+                lineJoin: "round",
+              }}
+            />
+            {/* Coloured line on top */}
+            <Polyline
+              positions={positions}
+              pathOptions={{
+                color,
+                weight: isCycle ? 5 : 6,
+                opacity: 1,
+                dashArray: isCycle ? "10 8" : undefined,
+                lineCap: "round",
+                lineJoin: "round",
+              }}
+            />
+          </Fragment>
         );
       })}
 
