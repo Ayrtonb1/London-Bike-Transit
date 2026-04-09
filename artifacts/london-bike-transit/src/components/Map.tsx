@@ -60,6 +60,23 @@ interface MapProps {
   fromPlace: Place | null;
   toPlace: Place | null;
   selectedJourney: Journey | null;
+  /** Pass true whenever the map panel becomes visible on screen so Leaflet
+   *  can recalculate tile coverage after being hidden (e.g. mobile tab swap). */
+  isVisible?: boolean;
+}
+
+// Calls map.invalidateSize() whenever isVisible flips to true so all tiles
+// fill the container even if it was display:none when the map first mounted.
+function MapResizer({ isVisible }: { isVisible: boolean }) {
+  const map = useMap();
+  useEffect(() => {
+    if (isVisible) {
+      // Short delay lets the CSS class change propagate before measuring.
+      const t = setTimeout(() => map.invalidateSize(), 50);
+      return () => clearTimeout(t);
+    }
+  }, [isVisible, map]);
+  return null;
 }
 
 // ── Map bounds auto-fitter ────────────────────────────────────────────────────
@@ -95,7 +112,7 @@ function MapUpdater({ fromPlace, toPlace, selectedJourney }: MapProps) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function Map({ fromPlace, toPlace, selectedJourney }: MapProps) {
+export function Map({ fromPlace, toPlace, selectedJourney, isVisible = true }: MapProps) {
   return (
     <MapContainer
       center={[51.505, -0.09]}
@@ -109,6 +126,7 @@ export function Map({ fromPlace, toPlace, selectedJourney }: MapProps) {
         maxZoom={19}
       />
 
+      <MapResizer isVisible={isVisible} />
       <MapUpdater fromPlace={fromPlace} toPlace={toPlace} selectedJourney={selectedJourney} />
 
       {/* ── Route lines — white casing first, then coloured line on top ───── */}

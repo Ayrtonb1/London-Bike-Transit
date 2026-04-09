@@ -294,6 +294,7 @@ export default function Home() {
           fromPlace={fromPlace}
           toPlace={toPlace}
           selectedJourney={selectedJourney}
+          isVisible={mobileTab === "map"}
         />
 
         {/* Mobile-only: "Routes" back button overlaid on the map */}
