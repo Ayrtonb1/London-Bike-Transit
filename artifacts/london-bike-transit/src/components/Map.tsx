@@ -134,12 +134,13 @@ export function Map({ fromPlace, toPlace, selectedJourney, isVisible = true }: M
         const color = getLegColor(leg.mode, leg.lineId);
         const isCycle = leg.mode === "cycle";
 
-        // Use TfL polyline if present; otherwise draw a straight line from
-        // the stored coordinates (always available on manually-added legs).
+        // Always draw a clean straight line between the leg's endpoints.
+        // TfL's raw polyline data follows underground tunnel geometry which
+        // produces a spaghetti mess for lines like the Elizabeth line — a
+        // schematic straight line between stops is clearer and matches how
+        // TfL's own Journey Planner presents routes.
         const positions: [number, number][] | null =
-          leg.polyline?.length
-            ? leg.polyline.map((p) => [p[0], p[1]])
-            : leg.fromLat != null && leg.toLat != null
+          leg.fromLat != null && leg.toLat != null
             ? [
                 [leg.fromLat, leg.fromLon!],
                 [leg.toLat, leg.toLon!],
