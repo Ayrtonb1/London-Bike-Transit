@@ -86,11 +86,9 @@ export default function Home() {
   const selectedJourney: Journey | null =
     routeData?.journeys?.find((j) => j.id === selectedJourneyId) ?? null;
 
-  // The cycle-only journey is always the last fallback; its time is the
-  // consistent baseline for the "X min faster" badge across all cards.
-  const cycleOnlyMinutes: number | undefined = routeData?.journeys?.find(
-    (j) => j.summary === "Cycle only"
-  )?.totalDurationMinutes;
+  // Baseline for the "X min vs cycling" badge — returned directly from planRoute
+  // so it's always available even if the cycle-only card falls outside the top 5.
+  const cycleOnlyMinutes: number | undefined = routeData?.cycleOnlyMinutes;
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-background font-sans md:flex">

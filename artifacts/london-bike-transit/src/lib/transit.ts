@@ -68,6 +68,9 @@ export interface RouteResponse {
   fromName: string;
   toName: string;
   filteredCount: number;
+  /** Duration of cycling the whole journey — always computed as a baseline for
+   *  the "X min vs cycling" badge, even if the cycle-only card is outside top 5. */
+  cycleOnlyMinutes: number;
 }
 
 const CYCLING_SPEED_M_PER_MIN = 250; // ~15 km/h
@@ -878,21 +881,31 @@ export async function planRoute(
   const totalCount = allCandidates.length;
   const viable = allCandidates.filter((j) => isJourneyViableNow(j.legs, checkDate));
 
+  // ── Scoring: penalise extra transit changes so simpler routes rank higher
+  // when journey times are close. Each change above 1 costs ~8 minutes of
+  // convenience penalty — enough to prefer a direct service over a 1-change
+  // option that's only a couple of minutes faster.
+  function journeyScore(j: Journey): number {
+    if (j.summary === "Cycle only") return Infinity; // always push to end before slice
+    const transitLegs = j.legs.filter((l) => l.mode !== "cycle").length;
+    const changesPenalty = Math.max(0, transitLegs - 1) * 8;
+    return j.totalDurationMinutes + changesPenalty;
+  }
+
   const deduped = deduplicateJourneys(viable).sort(
-    (a, b) => a.totalDurationMinutes - b.totalDurationMinutes
+    (a, b) => journeyScore(a) - journeyScore(b)
   );
 
-  // Always guarantee a cycle-only fallback
-  const hasCycleOnly = deduped.some((j) => j.summary === "Cycle only");
-  if (!hasCycleOnly) {
-    const fallback = synthesisCycleJourney(
-      fromLat, fromLon, toLat, toLon, fromLabel, toLabel
-    );
-    const insertAt = deduped.findIndex(
-      (j) => j.totalDurationMinutes > fallback.totalDurationMinutes
-    );
-    if (insertAt === -1) deduped.push(fallback);
-    else deduped.splice(insertAt, 0, fallback);
+  // Always guarantee a cycle-only fallback — computed separately so we can
+  // return cycleOnlyMinutes even if the cycle-only card falls outside top 5.
+  const existingCycleOnly = deduped.find((j) => j.summary === "Cycle only");
+  const cycleOnlyJourney =
+    existingCycleOnly ??
+    synthesisCycleJourney(fromLat, fromLon, toLat, toLon, fromLabel, toLabel);
+  const cycleOnlyMinutes = cycleOnlyJourney.totalDurationMinutes;
+
+  if (!existingCycleOnly) {
+    deduped.push(cycleOnlyJourney);
   }
 
   const journeys = deduped.slice(0, 5).map((j, i) => ({ ...j, id: `journey-${i}` }));
@@ -902,5 +915,6 @@ export async function planRoute(
     fromName: fromLabel,
     toName: toLabel,
     filteredCount: totalCount - viable.length,
+    cycleOnlyMinutes,
   };
 }
