@@ -549,6 +549,13 @@ async function fetchTflJourneys(url: string, offset: number): Promise<Journey[]>
   }
 }
 
+// Tube lines that are NEVER viable for non-folding bikes at any time — deep
+// single-track tunnels with a permanent ban, not just a peak restriction.
+// Excluding their stops early prevents pointless via-stop journey attempts.
+const NEVER_VIABLE_TUBE_LINES = new Set([
+  "bakerloo", "central", "jubilee", "piccadilly", "victoria", "waterloo-city",
+]);
+
 /**
  * Find transit stops near a location that currently permit non-folding bikes.
  * Uses TfL's StopPoint API to discover stations within the given radius.
@@ -560,10 +567,12 @@ async function findNearbyViableStops(
   isPeak: boolean,
   checkDate: Date = new Date()
 ): Promise<TflStopPoint[]> {
-  // Include all relevant modes; we'll filter by bike viability after.
-  // Even during peak we include overground/dlr/elizabeth-line so that stops
-  // are discovered — viability is then decided per-line in the filter below.
-  const modeFilter = "tube,overground,elizabeth-line,dlr,national-rail";
+  // During peak, overground/elizabeth-line/dlr/national-rail all have off-peak-only
+  // bike rules, so the only tube that's ever viable at peak is the Northern line
+  // outer sections. Narrow the mode filter accordingly to reduce noise.
+  const modeFilter = isPeak
+    ? "tube,national-rail"  // Only NR and tube (for Northern outer) during peak
+    : "tube,overground,elizabeth-line,dlr,national-rail";
 
   const url =
     `https://api.tfl.gov.uk/StopPoint` +
@@ -585,13 +594,18 @@ async function findNearbyViableStops(
         lat: s.lat,
         lon: s.lon,
         modes: s.modes ?? [],
-        lines: s.lines ?? [],
+        // Strip out permanently-banned tube lines before any further processing.
+        lines: (s.lines ?? []).filter(
+          (l: { id: string }) => !NEVER_VIABLE_TUBE_LINES.has(l.id)
+        ),
       })
     );
 
     // Filter to stops that have at least one bike-viable line at the planned time.
     // Check each line with its own correct mode, not just the stop's primary mode.
     return stops.filter((stop) => {
+      // Discard stops whose only lines were all permanently banned (now empty).
+      if (stop.lines.length === 0) return false;
       return stop.lines.some((line) => {
         // Determine the mode for this specific line by checking line ID conventions
         // TfL line IDs for overground/elizabeth/dlr/national-rail are distinct.
@@ -631,15 +645,21 @@ async function findMaxSingleTransitJourneys(
   fromLabel: string,
   toLabel: string,
   bikeFriendlyModes: string,
-  planningTime?: PlanningTime
+  planningTime?: PlanningTime,
+  // Accept pre-fetched stops to avoid duplicate StopPoint API calls
+  preFetchedOriginStops?: TflStopPoint[],
+  preFetchedDestStops?: TflStopPoint[],
 ): Promise<Journey[]> {
-  // Find viable stops near BOTH ends simultaneously
   const checkDate = planningTimeToDate(planningTime);
   const isPeakNow = getPeakStatus(checkDate).isPeak;
-  const [originStops, destStops] = await Promise.all([
-    findNearbyViableStops(fromLat, fromLon, 3000, isPeakNow, checkDate),
-    findNearbyViableStops(toLat, toLon, 3000, isPeakNow, checkDate),
-  ]);
+
+  // Reuse stops fetched by Phase 1 if available; only fetch if not provided.
+  const [originStops, destStops] = preFetchedOriginStops && preFetchedDestStops
+    ? [preFetchedOriginStops, preFetchedDestStops]
+    : await Promise.all([
+        findNearbyViableStops(fromLat, fromLon, 3000, isPeakNow, checkDate),
+        findNearbyViableStops(toLat, toLon, 3000, isPeakNow, checkDate),
+      ]);
 
   if (originStops.length === 0 || destStops.length === 0) return [];
 
@@ -697,7 +717,7 @@ async function findMaxSingleTransitJourneys(
 
   // For each top pair, plan transit station → station and wrap with cycling legs
   const results = await Promise.all(
-    uniquePairs.slice(0, 4).map(async (pair, idx) => {
+    uniquePairs.slice(0, 3).map(async (pair, idx) => {
       const journeysToStop = await fetchTflJourneys(
         buildTflUrl(pair.origin.lat, pair.origin.lon, pair.dest.lat, pair.dest.lon, bikeFriendlyModes, planningTime),
         600 + idx * 10
@@ -826,13 +846,17 @@ export async function planRoute(
     ),
   ]);
 
-  // ── Phase 2a: "ride to nearby destination stop, then cycle last mile" ─────
-  // Uses SURFACE_BIKE_MODES (no tube) so TfL can't pick deep-tube routes
-  // that would be filtered out anyway — forcing it to return viable surface
-  // transit (Overground, National Rail, DLR, Elizabeth line).
-  const viaDestStopJourneys = (
-    await Promise.all(
-      nearbyDestStops.slice(0, 5).map(async (stop, idx) => {
+  // ── Phase 2: via-stop journeys — 2a and 2b run IN PARALLEL since they are
+  // independent of each other (2a appends a last-mile cycle, 2b prepends a
+  // first-mile cycle). Running them together eliminates one round-trip of
+  // network latency compared to sequential execution.
+  // Uses SURFACE_BIKE_MODES (no tube) so TfL returns Overground/NR/DLR routes
+  // that will actually pass viability checks rather than deep-tube routes.
+  // Slice to 3 stops each — enough for good coverage without excess API calls.
+  const [viaDestStopJourneys, viaOriginStopJourneys] = await Promise.all([
+    // 2a: transit to a stop near destination, then cycle the last mile
+    Promise.all(
+      nearbyDestStops.slice(0, 3).map(async (stop, idx) => {
         const journeysToStop = await fetchTflJourneys(
           buildTflUrl(fromLat, fromLon, stop.lat, stop.lon, SURFACE_BIKE_MODES, planningTime),
           300 + idx * 10
@@ -844,16 +868,11 @@ export async function planRoute(
           appendCycleLeg(j, stop.commonName, toLabel, cycleDist, stop.lat, stop.lon, toLat, toLon)
         );
       })
-    )
-  ).flat();
+    ).then((r) => r.flat()),
 
-  // ── Phase 2b: "cycle first mile to nearby origin stop, then transit" ──────
-  // Start from a known viable station; use SURFACE_BIKE_MODES so TfL plans
-  // entirely on Overground/NR/DLR. Without this, TfL would still pick tube
-  // (faster but banned for bikes), leaving no viable routes after filtering.
-  const viaOriginStopJourneys = (
-    await Promise.all(
-      nearbyOriginStops.slice(0, 5).map(async (stop, idx) => {
+    // 2b: cycle the first mile to a stop near origin, then transit
+    Promise.all(
+      nearbyOriginStops.slice(0, 3).map(async (stop, idx) => {
         const journeysFromStop = await fetchTflJourneys(
           buildTflUrl(stop.lat, stop.lon, toLat, toLon, SURFACE_BIKE_MODES, planningTime),
           400 + idx * 10
@@ -865,8 +884,8 @@ export async function planRoute(
           prependCycleLeg(j, fromLabel, stop.commonName, cycleDist, fromLat, fromLon, stop.lat, stop.lon)
         );
       })
-    )
-  ).flat();
+    ).then((r) => r.flat()),
+  ]);
 
   // ── Phase 3: pool, filter, deduplicate, sort ──────────────────────────────
   const allCandidates = [
