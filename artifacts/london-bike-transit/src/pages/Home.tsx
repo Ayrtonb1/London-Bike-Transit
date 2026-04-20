@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { SearchBox } from "@/components/SearchBox";
 import { JourneyCard } from "@/components/JourneyCard";
@@ -104,39 +104,34 @@ export default function Home() {
   // cycle leg, cached by rounded coords so re-selecting is instant. The map
   // re-renders with actual road-following paths as fetches resolve.
   const [cyclePolylines, setCyclePolylines] = useState<
-    Record<string, [number, number][] | null>
+    Record<string, [number, number][]>
   >({});
+  // Track which fetches we've already kicked off, independent of React state,
+  // so we don't refetch the same leg every time the effect re-runs.
+  const inFlightRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!selectedJourney) return;
-    // Always fetch a fresh cycle polyline for every cycle leg — the merged
-    // legs from prependCycleLeg/appendCycleLeg can carry partial polylines
-    // (walking portion only) that don't span the full leg, and walking
-    // routes aren't optimal for cycling anyway. The cache keyed by rounded
-    // coords means real duplicate routes are deduped automatically.
-    const cycleLegs = selectedJourney.legs.filter(
-      (leg) => leg.mode === "cycle" && leg.fromLat != null && leg.toLat != null,
-    );
-    if (cycleLegs.length === 0) return;
-
-    let cancelled = false;
-    for (const leg of cycleLegs) {
-      const key = cyclePolylineKey(leg.fromLat!, leg.fromLon!, leg.toLat!, leg.toLon!);
-      if (key in cyclePolylines) continue; // already fetched (or fetching)
-      // Mark as in-flight immediately to prevent duplicate fetches when the
-      // effect re-runs before the request resolves.
-      setCyclePolylines((prev) => ({ ...prev, [key]: null }));
-      fetchCyclePolyline(leg.fromLat!, leg.fromLon!, leg.toLat!, leg.toLon!).then(
+    // Fetch a real road-following polyline for every cycle leg in this
+    // journey. Cached by rounded coords across selections; the ref-based
+    // dedup avoids ANY race with React state updates (a previous version
+    // depended on cyclePolylines and lost results to its own cleanup).
+    for (const leg of selectedJourney.legs) {
+      if (leg.mode !== "cycle") continue;
+      if (leg.fromLat == null || leg.toLat == null) continue;
+      const key = cyclePolylineKey(leg.fromLat, leg.fromLon!, leg.toLat, leg.toLon!);
+      if (inFlightRef.current.has(key)) continue;
+      inFlightRef.current.add(key);
+      fetchCyclePolyline(leg.fromLat, leg.fromLon!, leg.toLat, leg.toLon!).then(
         (polyline) => {
-          if (cancelled || !polyline) return;
-          setCyclePolylines((prev) => ({ ...prev, [key]: polyline }));
+          if (!polyline || polyline.length < 2) return;
+          setCyclePolylines((prev) =>
+            key in prev ? prev : { ...prev, [key]: polyline },
+          );
         },
       );
     }
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedJourney, cyclePolylines]);
+  }, [selectedJourney]);
 
   // Decorate the selected journey with fetched cycle polylines. The fetched
   // polyline is preferred over any existing one because the existing one may

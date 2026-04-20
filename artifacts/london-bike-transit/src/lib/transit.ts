@@ -824,7 +824,10 @@ async function findMaxSingleTransitJourneys(
         isSubstituted: false,
       };
 
-      const allLegs = [cycleToLeg, ...singleLeg.legs, cycleFromLeg];
+      // Merge so any walking-converted-cycle leg at the start/end of the
+      // inner journey collapses with our synthesised cycle legs into one
+      // continuous cycle leg, instead of being shown as two adjacent ones.
+      const allLegs = mergeConsecutiveCycleLegs([cycleToLeg, ...singleLeg.legs, cycleFromLeg]);
       const cycleToMin = cycleToLeg.durationMinutes;
       const cycleFromMin = cycleFromLeg.durationMinutes;
       const totalDuration = singleLeg.totalDurationMinutes + cycleToMin + cycleFromMin;
