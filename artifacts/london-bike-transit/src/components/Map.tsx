@@ -79,10 +79,11 @@ export function Map({ fromPlace, toPlace, selectedJourney, isVisible = true }: M
     try {
       const map = new maplibregl.Map({
         container: containerRef.current,
-        // OpenFreeMap "Positron" — clean all-grey minimal style. Free, no
-        // API key, no rate limits. Light grey land + roads, subtle labels:
-        // perfect neutral backdrop for coloured route overlays.
-        style: "https://tiles.openfreemap.org/styles/positron",
+        // OpenFreeMap Positron — modified to pure greyscale. Default Positron
+        // has subtle warm beige tints and blue water; this local copy converts
+        // every paint colour to its luminance-equivalent grey, leaving a fully
+        // neutral backdrop so coloured route overlays stand out cleanly.
+        style: `${import.meta.env.BASE_URL}positron-grey.json`,
         center: [-0.09, 51.505],
         zoom: 11,
         attributionControl: { compact: true },
