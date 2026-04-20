@@ -821,14 +821,16 @@ export async function planRoute(
     ? "national-rail,river-bus,walking"
     : "overground,national-rail,elizabeth-line,dlr,river-bus,walking";
 
-  // ── Phase 1: all standard TfL calls + stop discovery, all in parallel ─────
+  // ── Stage 1: lookups only (TfL routing + stop discovery), all in parallel.
+  // findMaxSingleTransitJourneys is intentionally NOT in this batch — it needs
+  // the same nearby stops that we're fetching here, and re-fetching them inside
+  // it duplicates ~500ms of API latency on the critical path.
   const [
     allResults,
     bikeFriendlyResults,
     cycleResults,
     nearbyDestStops,
     nearbyOriginStops,
-    singleTransitJourneys,
   ] = await Promise.all([
     // Standard TfL routing (full mode set)
     fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, ALL_MODES, planningTime), 0),
@@ -840,20 +842,22 @@ export async function planRoute(
     findNearbyViableStops(toLat, toLon, 3000, isPeak, checkDate),
     // Viable stops near ORIGIN (for "initial-cycle then transit" prepending)
     findNearbyViableStops(fromLat, fromLon, 3000, isPeak, checkDate),
-    // Best "cycle → 1 transit leg → cycle" (maximises transit coverage)
-    findMaxSingleTransitJourneys(
-      fromLat, fromLon, toLat, toLon, fromLabel, toLabel, BIKE_FRIENDLY_MODES, planningTime
-    ),
   ]);
 
-  // ── Phase 2: via-stop journeys — 2a and 2b run IN PARALLEL since they are
-  // independent of each other (2a appends a last-mile cycle, 2b prepends a
-  // first-mile cycle). Running them together eliminates one round-trip of
-  // network latency compared to sequential execution.
-  // Uses SURFACE_BIKE_MODES (no tube) so TfL returns Overground/NR/DLR routes
-  // that will actually pass viability checks rather than deep-tube routes.
-  // Slice to 3 stops each — enough for good coverage without excess API calls.
-  const [viaDestStopJourneys, viaOriginStopJourneys] = await Promise.all([
+  // ── Stage 2: all stop-dependent journey building, in one parallel batch.
+  // findMaxSingleTransitJourneys, Phase 2a, and Phase 2b all need the stops
+  // from Stage 1 but don't depend on each other, so they run together. This
+  // eliminates the previous sequential gap between findMaxSingle and Phase 2.
+  // Phase 2 uses SURFACE_BIKE_MODES (no tube) so TfL returns Overground/NR/DLR
+  // routes that will actually pass viability checks rather than deep-tube routes.
+  const [singleTransitJourneys, viaDestStopJourneys, viaOriginStopJourneys] = await Promise.all([
+    // Best "cycle → 1 transit leg → cycle" (passes pre-fetched stops to skip
+    // the duplicate StopPoint API calls it would otherwise make).
+    findMaxSingleTransitJourneys(
+      fromLat, fromLon, toLat, toLon, fromLabel, toLabel, BIKE_FRIENDLY_MODES, planningTime,
+      nearbyOriginStops, nearbyDestStops
+    ),
+
     // 2a: transit to a stop near destination, then cycle the last mile
     Promise.all(
       nearbyDestStops.slice(0, 3).map(async (stop, idx) => {
