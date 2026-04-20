@@ -58,6 +58,12 @@ export default defineConfig({
       workbox: {
         // Pre-cache all build assets (app shell)
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        // Activate the new service worker immediately on update so users
+        // don't keep getting served stale JS bundles after a deploy. Also
+        // prune any old caches from previous SW versions.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             // TfL Journey Planner — network-first, 5-min cache
@@ -78,12 +84,15 @@ export default defineConfig({
             },
           },
           {
-            // Map tiles — stale-while-revalidate, 7-day cache
-            urlPattern: /^https:\/\/.*\.basemaps\.cartocdn\.com\/.*/i,
+            // OpenFreeMap vector tiles — stale-while-revalidate, 30-day cache.
+            // (Old rule pointed to cartocdn from the Leaflet days and never
+            // matched OpenFreeMap, so map tiles weren't being cached at all
+            // — a big mobile speed loss.)
+            urlPattern: /^https:\/\/tiles\.openfreemap\.org\/.*/i,
             handler: "StaleWhileRevalidate",
             options: {
               cacheName: "map-tiles-cache",
-              expiration: { maxEntries: 500, maxAgeSeconds: 604800 },
+              expiration: { maxEntries: 1000, maxAgeSeconds: 2592000 },
             },
           },
         ],

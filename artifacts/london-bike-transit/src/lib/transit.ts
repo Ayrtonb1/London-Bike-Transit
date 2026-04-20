@@ -544,10 +544,31 @@ function buildTflUrl(
   return url.toString();
 }
 
+// Per-request budget for any single TfL call on the search critical path.
+// Without this, one slow request stalls the entire `Promise.all` pipeline and
+// drives total search time to 15s+ on cellular. 6s is generous enough that
+// healthy calls always succeed while killing the long tail.
+const TFL_REQUEST_TIMEOUT_MS = 6000;
+
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs = TFL_REQUEST_TIMEOUT_MS,
+): Promise<Response | null> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: ctrl.signal });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchTflJourneys(url: string, offset: number): Promise<Journey[]> {
   try {
-    const res = await fetch(url);
-    if (!res.ok) return [];
+    const res = await fetchWithTimeout(url);
+    if (!res || !res.ok) return [];
     const data = await res.json();
     return (data.journeys ?? [] as TflJourney[]).map(
       (j: TflJourney, i: number) => buildJourney(j, offset + i)
@@ -645,8 +666,8 @@ async function findNearbyViableStops(
     `&returnLines=true`;
 
   try {
-    const res = await fetch(url);
-    if (!res.ok) return [];
+    const res = await fetchWithTimeout(url);
+    if (!res || !res.ok) return [];
     const data = await res.json();
     const stops: TflStopPoint[] = (data.stopPoints ?? []).map(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -777,9 +798,11 @@ async function findMaxSingleTransitJourneys(
     return true;
   });
 
-  // For each top pair, plan transit station → station and wrap with cycling legs
+  // For each top pair, plan transit station → station and wrap with cycling legs.
+  // Capped at 2 to keep mobile latency in check — the pairs are sorted by
+  // shortest total cycling distance, so the top 2 are the strongest candidates.
   const results = await Promise.all(
-    uniquePairs.slice(0, 3).map(async (pair, idx) => {
+    uniquePairs.slice(0, 2).map(async (pair, idx) => {
       const journeysToStop = await fetchTflJourneys(
         buildTflUrl(pair.origin.lat, pair.origin.lon, pair.dest.lat, pair.dest.lon, bikeFriendlyModes, planningTime),
         600 + idx * 10
@@ -890,10 +913,12 @@ export async function planRoute(
   // findMaxSingleTransitJourneys is intentionally NOT in this batch — it needs
   // the same nearby stops that we're fetching here, and re-fetching them inside
   // it duplicates ~500ms of API latency on the critical path.
+  // We synthesise a cycle-only fallback ourselves further down, so we no longer
+  // ask TfL for a dedicated cycle,walking journey — that call was pure latency
+  // on the critical path with no journeys we couldn't already produce.
   const [
     allResults,
     bikeFriendlyResults,
-    cycleResults,
     nearbyDestStops,
     nearbyOriginStops,
   ] = await Promise.all([
@@ -901,13 +926,12 @@ export async function planRoute(
     fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, ALL_MODES, planningTime), 0),
     // Bike-friendly routing (no bus; TfL adds walks → we convert to cycling)
     fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, BIKE_FRIENDLY_MODES, planningTime), 100),
-    // Cycle-only from TfL
-    fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, "cycle,walking", planningTime), 200),
     // Viable stops near DESTINATION (for "transit then final-cycle" appending)
     findNearbyViableStops(toLat, toLon, 3000, isPeak, checkDate),
     // Viable stops near ORIGIN (for "initial-cycle then transit" prepending)
     findNearbyViableStops(fromLat, fromLon, 3000, isPeak, checkDate),
   ]);
+  const cycleResults: Journey[] = [];
 
   // ── Stage 2: all stop-dependent journey building, in one parallel batch.
   // findMaxSingleTransitJourneys, Phase 2a, and Phase 2b all need the stops
@@ -923,9 +947,11 @@ export async function planRoute(
       nearbyOriginStops, nearbyDestStops
     ),
 
-    // 2a: transit to a stop near destination, then cycle the last mile
+    // 2a: transit to a stop near destination, then cycle the last mile.
+    // Capped at 2 candidates to limit mobile latency (each TfL call ≈ 1–2s on
+    // 4G); the top 2 dominate the result set after dedup/scoring anyway.
     Promise.all(
-      nearbyDestStops.slice(0, 3).map(async (stop, idx) => {
+      nearbyDestStops.slice(0, 2).map(async (stop, idx) => {
         const journeysToStop = await fetchTflJourneys(
           buildTflUrl(fromLat, fromLon, stop.lat, stop.lon, SURFACE_BIKE_MODES, planningTime),
           300 + idx * 10
@@ -940,8 +966,9 @@ export async function planRoute(
     ).then((r) => r.flat()),
 
     // 2b: cycle the first mile to a stop near origin, then transit
+    // (capped at 2 for the same mobile-latency reason as 2a above).
     Promise.all(
-      nearbyOriginStops.slice(0, 3).map(async (stop, idx) => {
+      nearbyOriginStops.slice(0, 2).map(async (stop, idx) => {
         const journeysFromStop = await fetchTflJourneys(
           buildTflUrl(stop.lat, stop.lon, toLat, toLon, SURFACE_BIKE_MODES, planningTime),
           400 + idx * 10
