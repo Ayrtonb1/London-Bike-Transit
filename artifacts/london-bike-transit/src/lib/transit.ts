@@ -503,6 +503,14 @@ function synthesisCycleJourney(
         distanceMeters: roadEstimate,
         fromName: fromLabel,
         toName: toLabel,
+        // Coords are required so Map.tsx can draw the leg AND so Home.tsx
+        // can fetch the real road-following polyline for it. Without these
+        // the cycle-only journey was rendered as nothing at all (and the
+        // polyline fetch never ran).
+        fromLat,
+        fromLon,
+        toLat,
+        toLon,
         isSubstituted: false,
       },
     ],
