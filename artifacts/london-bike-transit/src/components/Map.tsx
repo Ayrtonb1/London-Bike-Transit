@@ -145,18 +145,27 @@ export function Map({ fromPlace, toPlace, selectedJourney, isVisible = true }: M
           const casingId = `route-${i}-casing`;
           const lineId = `route-${i}-line`;
 
+          // For cycle legs with a real road-following polyline (fetched from
+          // TfL's cycle routing), draw the actual path. Otherwise (transit
+          // legs, or cycle legs whose polyline hasn't been fetched yet) draw
+          // a straight schematic line between the endpoints. Tube polylines
+          // are intentionally skipped — they follow tunnel geometry which
+          // produces visual spaghetti, esp. on the Elizabeth line.
+          // NB: leg.polyline is [[lat, lon], ...]; GeoJSON needs [lon, lat].
+          const coordinates: [number, number][] =
+            isCycle && leg.polyline && leg.polyline.length >= 2
+              ? leg.polyline.map(([lat, lon]) => [lon, lat])
+              : [
+                  [leg.fromLon!, leg.fromLat],
+                  [leg.toLon!, leg.toLat],
+                ];
+
           map.addSource(sourceId, {
             type: "geojson",
             data: {
               type: "Feature",
               properties: {},
-              geometry: {
-                type: "LineString",
-                coordinates: [
-                  [leg.fromLon!, leg.fromLat],
-                  [leg.toLon!, leg.toLat],
-                ],
-              },
+              geometry: { type: "LineString", coordinates },
             },
           });
 

@@ -549,6 +549,63 @@ async function fetchTflJourneys(url: string, offset: number): Promise<Journey[]>
   }
 }
 
+/**
+ * Build a stable cache key for a cycle leg's start/end coords. Rounded to 4
+ * decimal places (~11m precision) so tiny floating-point noise doesn't cause
+ * cache misses for what is effectively the same route.
+ */
+export function cyclePolylineKey(
+  fromLat: number,
+  fromLon: number,
+  toLat: number,
+  toLon: number,
+): string {
+  const r = (n: number) => n.toFixed(4);
+  return `${r(fromLat)},${r(fromLon)}-${r(toLat)},${r(toLon)}`;
+}
+
+/**
+ * Fetch a real road-following cycle polyline between two points using TfL's
+ * Journey Planner with cycle preference set to "Quietest" — this routes via
+ * Cycleways, Quietways, and quiet streets (TfL's safer-cycling network)
+ * rather than busy main roads. Returns null on failure so the caller can
+ * fall back to a straight line.
+ */
+export async function fetchCyclePolyline(
+  fromLat: number,
+  fromLon: number,
+  toLat: number,
+  toLon: number,
+): Promise<[number, number][] | null> {
+  try {
+    const url = new URL(
+      `https://api.tfl.gov.uk/Journey/JourneyResults/${fromLat}%2C${fromLon}/to/${toLat}%2C${toLon}`,
+    );
+    url.searchParams.set("mode", "cycle");
+    url.searchParams.set("cyclePreference", "Quietest");
+    url.searchParams.set("alternativeCycle", "false");
+
+    const res = await fetch(url.toString());
+    if (!res.ok) return null;
+    const data = await res.json();
+    const journey = (data.journeys ?? [])[0];
+    if (!journey) return null;
+
+    // Concatenate the lineString from every cycle leg into one polyline.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const coords: [number, number][] = [];
+    for (const leg of journey.legs ?? []) {
+      const ls = leg?.path?.lineString;
+      if (typeof ls === "string" && ls.length > 0) {
+        coords.push(...decodeLineString(ls));
+      }
+    }
+    return coords.length >= 2 ? coords : null;
+  } catch {
+    return null;
+  }
+}
+
 // Tube lines that are NEVER viable for non-folding bikes at any time — deep
 // single-track tunnels with a permanent ban, not just a peak restriction.
 // Excluding their stops early prevents pointless via-stop journey attempts.

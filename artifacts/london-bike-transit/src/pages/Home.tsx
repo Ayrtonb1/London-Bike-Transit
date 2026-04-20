@@ -4,7 +4,14 @@ import { SearchBox } from "@/components/SearchBox";
 import { JourneyCard } from "@/components/JourneyCard";
 import { Map } from "@/components/Map";
 import { BikeRulesPanel } from "@/components/BikeRulesPanel";
-import { planRoute, type Place, type Journey, type PlanningTime } from "@/lib/transit";
+import {
+  planRoute,
+  fetchCyclePolyline,
+  cyclePolylineKey,
+  type Place,
+  type Journey,
+  type PlanningTime,
+} from "@/lib/transit";
 import { getPeakStatus } from "@/lib/bikeRules";
 import { Bike, Compass, Clock, AlertTriangle, Navigation, ChevronLeft } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -90,6 +97,62 @@ export default function Home() {
   // so it's always available even if the cycle-only card falls outside the top 5.
   const cycleOnlyMinutes: number | undefined = routeData?.cycleOnlyMinutes;
 
+  // ── Real road-following cycle polylines ─────────────────────────────────
+  // The journey planner returns cycle legs with no polyline (we synthesise
+  // them by converting walking legs). When the user picks a journey, we
+  // lazily fetch a real "Quietest"-preference cycle route from TfL for each
+  // cycle leg, cached by rounded coords so re-selecting is instant. The map
+  // re-renders with actual road-following paths as fetches resolve.
+  const [cyclePolylines, setCyclePolylines] = useState<
+    Record<string, [number, number][] | null>
+  >({});
+
+  useEffect(() => {
+    if (!selectedJourney) return;
+    const legsToFetch = selectedJourney.legs.filter(
+      (leg) =>
+        leg.mode === "cycle" &&
+        leg.fromLat != null &&
+        leg.toLat != null &&
+        (!leg.polyline || leg.polyline.length < 2),
+    );
+    if (legsToFetch.length === 0) return;
+
+    let cancelled = false;
+    for (const leg of legsToFetch) {
+      const key = cyclePolylineKey(leg.fromLat!, leg.fromLon!, leg.toLat!, leg.toLon!);
+      if (key in cyclePolylines) continue; // already fetched (or fetching)
+      // Mark as in-flight immediately to prevent duplicate fetches when the
+      // effect re-runs before the request resolves.
+      setCyclePolylines((prev) => ({ ...prev, [key]: null }));
+      fetchCyclePolyline(leg.fromLat!, leg.fromLon!, leg.toLat!, leg.toLon!).then(
+        (polyline) => {
+          if (cancelled || !polyline) return;
+          setCyclePolylines((prev) => ({ ...prev, [key]: polyline }));
+        },
+      );
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedJourney, cyclePolylines]);
+
+  // Decorate the selected journey with any fetched cycle polylines.
+  const enhancedSelectedJourney = useMemo<Journey | null>(() => {
+    if (!selectedJourney) return null;
+    return {
+      ...selectedJourney,
+      legs: selectedJourney.legs.map((leg) => {
+        if (leg.mode !== "cycle") return leg;
+        if (leg.polyline && leg.polyline.length >= 2) return leg;
+        if (leg.fromLat == null || leg.toLat == null) return leg;
+        const key = cyclePolylineKey(leg.fromLat, leg.fromLon!, leg.toLat, leg.toLon!);
+        const polyline = cyclePolylines[key];
+        return polyline ? { ...leg, polyline } : leg;
+      }),
+    };
+  }, [selectedJourney, cyclePolylines]);
+
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-background font-sans md:flex">
       {/* ── Map — always absolutely fills the screen on mobile so Leaflet can
@@ -98,7 +161,7 @@ export default function Home() {
         <Map
           fromPlace={fromPlace}
           toPlace={toPlace}
-          selectedJourney={selectedJourney}
+          selectedJourney={enhancedSelectedJourney}
         />
 
         {/* Mobile-only: "Routes" back button overlaid on the map */}
