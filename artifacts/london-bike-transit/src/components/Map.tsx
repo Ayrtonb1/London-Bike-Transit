@@ -18,7 +18,7 @@ const TUBE_COLORS: Record<string, string> = {
 };
 
 function getLegColor(mode: string, lineId?: string): string {
-  if (mode === "cycle") return "#16a34a";
+  if (mode === "cycle") return "#1db954";
   if (mode === "tube" && lineId && TUBE_COLORS[lineId]) return TUBE_COLORS[lineId];
   if (mode === "bus") return "#dc2626";
   if (mode === "overground") return "#ea580c";
@@ -177,12 +177,12 @@ export function Map({ fromPlace, toPlace, selectedJourney, isVisible = true }: M
             layout: { "line-cap": "round", "line-join": "round" },
             paint: {
               "line-color": "#ffffff",
-              "line-width": isCycle ? 8 : 10,
-              "line-opacity": 0.9,
+              "line-width": isCycle ? 9 : 10,
+              "line-opacity": 0.95,
             },
           });
 
-          // Coloured line on top (dashed for cycle legs)
+          // Coloured line on top — solid for all modes
           map.addLayer({
             id: lineId,
             type: "line",
@@ -190,9 +190,8 @@ export function Map({ fromPlace, toPlace, selectedJourney, isVisible = true }: M
             layout: { "line-cap": "round", "line-join": "round" },
             paint: {
               "line-color": color,
-              "line-width": isCycle ? 5 : 6,
+              "line-width": isCycle ? 6 : 6,
               "line-opacity": 1,
-              ...(isCycle ? { "line-dasharray": [2, 1.5] } : {}),
             },
           });
 

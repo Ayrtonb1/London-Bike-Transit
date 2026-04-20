@@ -109,17 +109,18 @@ export default function Home() {
 
   useEffect(() => {
     if (!selectedJourney) return;
-    const legsToFetch = selectedJourney.legs.filter(
-      (leg) =>
-        leg.mode === "cycle" &&
-        leg.fromLat != null &&
-        leg.toLat != null &&
-        (!leg.polyline || leg.polyline.length < 2),
+    // Always fetch a fresh cycle polyline for every cycle leg — the merged
+    // legs from prependCycleLeg/appendCycleLeg can carry partial polylines
+    // (walking portion only) that don't span the full leg, and walking
+    // routes aren't optimal for cycling anyway. The cache keyed by rounded
+    // coords means real duplicate routes are deduped automatically.
+    const cycleLegs = selectedJourney.legs.filter(
+      (leg) => leg.mode === "cycle" && leg.fromLat != null && leg.toLat != null,
     );
-    if (legsToFetch.length === 0) return;
+    if (cycleLegs.length === 0) return;
 
     let cancelled = false;
-    for (const leg of legsToFetch) {
+    for (const leg of cycleLegs) {
       const key = cyclePolylineKey(leg.fromLat!, leg.fromLon!, leg.toLat!, leg.toLon!);
       if (key in cyclePolylines) continue; // already fetched (or fetching)
       // Mark as in-flight immediately to prevent duplicate fetches when the
@@ -137,18 +138,20 @@ export default function Home() {
     };
   }, [selectedJourney, cyclePolylines]);
 
-  // Decorate the selected journey with any fetched cycle polylines.
+  // Decorate the selected journey with fetched cycle polylines. The fetched
+  // polyline is preferred over any existing one because the existing one may
+  // be a partial walking polyline left over from leg merging.
   const enhancedSelectedJourney = useMemo<Journey | null>(() => {
     if (!selectedJourney) return null;
     return {
       ...selectedJourney,
       legs: selectedJourney.legs.map((leg) => {
         if (leg.mode !== "cycle") return leg;
-        if (leg.polyline && leg.polyline.length >= 2) return leg;
         if (leg.fromLat == null || leg.toLat == null) return leg;
         const key = cyclePolylineKey(leg.fromLat, leg.fromLon!, leg.toLat, leg.toLon!);
-        const polyline = cyclePolylines[key];
-        return polyline ? { ...leg, polyline } : leg;
+        const fetched = cyclePolylines[key];
+        if (fetched && fetched.length >= 2) return { ...leg, polyline: fetched };
+        return leg;
       }),
     };
   }, [selectedJourney, cyclePolylines]);
