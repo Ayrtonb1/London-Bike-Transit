@@ -566,10 +566,9 @@ export function cyclePolylineKey(
 
 /**
  * Fetch a real road-following cycle polyline between two points using TfL's
- * Journey Planner with cycle preference set to "Quietest" — this routes via
- * Cycleways, Quietways, and quiet streets (TfL's safer-cycling network)
- * rather than busy main roads. Returns null on failure so the caller can
- * fall back to a straight line.
+ * Journey Planner. The cycle leg's lineString is already road-snapped along
+ * the cycle network (Cycleways, Quietways, and roads with cycle facilities).
+ * Returns null on failure so the caller can fall back to a straight line.
  */
 export async function fetchCyclePolyline(
   fromLat: number,
@@ -582,8 +581,6 @@ export async function fetchCyclePolyline(
       `https://api.tfl.gov.uk/Journey/JourneyResults/${fromLat}%2C${fromLon}/to/${toLat}%2C${toLon}`,
     );
     url.searchParams.set("mode", "cycle");
-    url.searchParams.set("cyclePreference", "Quietest");
-    url.searchParams.set("alternativeCycle", "false");
 
     const res = await fetch(url.toString());
     if (!res.ok) return null;
