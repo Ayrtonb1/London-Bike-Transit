@@ -79,9 +79,11 @@ export function Map({ fromPlace, toPlace, selectedJourney, isVisible = true }: M
     try {
       const map = new maplibregl.Map({
         container: containerRef.current,
-        // OpenFreeMap "liberty" style — Google-Maps-like vector tiles, free,
-        // no API key, no rate limits. Funded by donations.
-        style: "https://tiles.openfreemap.org/styles/liberty",
+        // OpenMapTiles "Basic" (Klokantech) style, served locally with all
+        // tile/glyph/sprite sources rewritten to OpenFreeMap. Free, no API
+        // key, no rate limits — same vector data as Google Maps' style of
+        // crisp labels and smooth zoom, in the minimal Basic styling.
+        style: `${import.meta.env.BASE_URL}basic-style.json`,
         center: [-0.09, 51.505],
         zoom: 11,
         attributionControl: { compact: true },
