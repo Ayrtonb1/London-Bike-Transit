@@ -1,32 +1,7 @@
-import { useEffect, Fragment } from "react";
-import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, useMap } from "react-leaflet";
-import L from "leaflet";
+import { useEffect, useRef } from "react";
+import maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import type { Journey, Place } from "@/lib/transit";
-
-// ── Custom DivIcon markers ────────────────────────────────────────────────────
-
-function makeDotIcon(label: string, bg: string) {
-  return L.divIcon({
-    className: "",
-    html: `<div style="
-      width:30px;height:30px;
-      background:${bg};
-      border-radius:50%;
-      border:3px solid white;
-      box-shadow:0 2px 8px rgba(0,0,0,0.35);
-      display:flex;align-items:center;justify-content:center;
-      color:white;font-weight:800;font-size:13px;font-family:sans-serif;
-      line-height:1;
-    ">${label}</div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-  });
-}
-
-const originIcon = makeDotIcon("A", "#16a34a");
-const destIcon = makeDotIcon("B", "#dc2626");
-
-// ── Mode colours ─────────────────────────────────────────────────────────────
 
 const TUBE_COLORS: Record<string, string> = {
   bakerloo: "#B36305",
@@ -54,178 +29,245 @@ function getLegColor(mode: string, lineId?: string): string {
   return "#71717a";
 }
 
-// ── Props ─────────────────────────────────────────────────────────────────────
+function makeAbMarkerEl(label: string, bg: string): HTMLDivElement {
+  const el = document.createElement("div");
+  el.style.cssText = `
+    width:30px;height:30px;background:${bg};border-radius:50%;
+    border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);
+    display:flex;align-items:center;justify-content:center;
+    color:white;font-weight:800;font-size:13px;font-family:sans-serif;
+    line-height:1;cursor:default;
+  `;
+  el.textContent = label;
+  return el;
+}
+
+function makeStopMarkerEl(color: string): HTMLDivElement {
+  const el = document.createElement("div");
+  el.style.cssText = `
+    width:14px;height:14px;background:${color};border-radius:50%;
+    border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4);
+    cursor:default;
+  `;
+  return el;
+}
 
 interface MapProps {
   fromPlace: Place | null;
   toPlace: Place | null;
   selectedJourney: Journey | null;
-  /** Pass true whenever the map panel becomes visible on screen so Leaflet
-   *  can recalculate tile coverage after being hidden (e.g. mobile tab swap). */
+  /** Pass true whenever the map panel becomes visible on screen so MapLibre
+   *  can recalculate dimensions after being hidden (e.g. mobile tab swap). */
   isVisible?: boolean;
 }
 
-// Calls map.invalidateSize() whenever isVisible flips to true so all tiles
-// fill the container even if it was display:none when the map first mounted.
-function MapResizer({ isVisible }: { isVisible: boolean }) {
-  const map = useMap();
-  useEffect(() => {
-    if (isVisible) {
-      // Short delay lets the CSS class change propagate before measuring.
-      const t = setTimeout(() => map.invalidateSize(), 50);
-      return () => clearTimeout(t);
-    }
-  }, [isVisible, map]);
-  return null;
-}
-
-// ── Map bounds auto-fitter ────────────────────────────────────────────────────
-
-function MapUpdater({ fromPlace, toPlace, selectedJourney }: MapProps) {
-  const map = useMap();
-
-  useEffect(() => {
-    const bounds = L.latLngBounds([]);
-
-    if (fromPlace) bounds.extend([fromPlace.lat, fromPlace.lon]);
-    if (toPlace) bounds.extend([toPlace.lat, toPlace.lon]);
-
-    if (selectedJourney) {
-      for (const leg of selectedJourney.legs) {
-        if (leg.polyline?.length) {
-          leg.polyline.forEach((p) => bounds.extend([p[0], p[1]]));
-        }
-        if (leg.fromLat != null) bounds.extend([leg.fromLat, leg.fromLon!]);
-        if (leg.toLat != null) bounds.extend([leg.toLat, leg.toLon!]);
-      }
-    }
-
-    if (bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [60, 60] });
-    } else if (fromPlace) {
-      map.setView([fromPlace.lat, fromPlace.lon], 14);
-    }
-  }, [map, fromPlace, toPlace, selectedJourney]);
-
-  return null;
-}
-
-// ── Main component ────────────────────────────────────────────────────────────
-
 export function Map({ fromPlace, toPlace, selectedJourney, isVisible = true }: MapProps) {
-  return (
-    <MapContainer
-      center={[51.505, -0.09]}
-      zoom={12}
-      className="w-full h-full"
-      zoomControl={false}
-    >
-      <TileLayer
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        maxZoom={19}
-      />
+  const containerRef = useRef<HTMLDivElement>(null);
+  const fallbackRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const markersRef = useRef<maplibregl.Marker[]>([]);
+  const routeLayerIdsRef = useRef<string[]>([]);
+  const styleLoadedRef = useRef(false);
 
-      <MapResizer isVisible={isVisible} />
-      <MapUpdater fromPlace={fromPlace} toPlace={toPlace} selectedJourney={selectedJourney} />
+  // ── Initialise map once ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
 
-      {/* ── Route lines — white casing first, then coloured line on top ───── */}
-      {selectedJourney?.legs.map((leg, i) => {
-        const color = getLegColor(leg.mode, leg.lineId);
-        const isCycle = leg.mode === "cycle";
+    // MapLibre needs WebGL. Detect failure and show a friendly fallback so
+    // the whole app doesn't crash on environments without GPU support
+    // (very old browsers, headless screenshotting tools, etc.).
+    try {
+      const map = new maplibregl.Map({
+        container: containerRef.current,
+        // OpenFreeMap "liberty" style — Google-Maps-like vector tiles, free,
+        // no API key, no rate limits. Funded by donations.
+        style: "https://tiles.openfreemap.org/styles/liberty",
+        center: [-0.09, 51.505],
+        zoom: 11,
+        attributionControl: { compact: true },
+      });
 
-        // Always draw a clean straight line between the leg's endpoints.
-        // TfL's raw polyline data follows underground tunnel geometry which
-        // produces a spaghetti mess for lines like the Elizabeth line — a
-        // schematic straight line between stops is clearer and matches how
-        // TfL's own Journey Planner presents routes.
-        const positions: [number, number][] | null =
-          leg.fromLat != null && leg.toLat != null
-            ? [
-                [leg.fromLat, leg.fromLon!],
-                [leg.toLat, leg.toLon!],
-              ]
-            : null;
+      map.on("load", () => {
+        styleLoadedRef.current = true;
+      });
 
-        if (!positions) return null;
+      mapRef.current = map;
 
-        return (
-          <Fragment key={`leg-${i}`}>
-            {/* White casing drawn first so it sits behind */}
-            <Polyline
-              positions={positions}
-              pathOptions={{
-                color: "white",
-                weight: isCycle ? 8 : 10,
-                opacity: 0.9,
-                lineCap: "round",
-                lineJoin: "round",
-              }}
-            />
-            {/* Coloured line on top */}
-            <Polyline
-              positions={positions}
-              pathOptions={{
-                color,
-                weight: isCycle ? 5 : 6,
-                opacity: 1,
-                dashArray: isCycle ? "10 8" : undefined,
-                lineCap: "round",
-                lineJoin: "round",
-              }}
-            />
-          </Fragment>
-        );
-      })}
+      return () => {
+        map.remove();
+        mapRef.current = null;
+        styleLoadedRef.current = false;
+      };
+    } catch (err) {
+      console.warn("MapLibre init failed (likely no WebGL support):", err);
+      if (fallbackRef.current) {
+        fallbackRef.current.style.display = "flex";
+      }
+      return;
+    }
+  }, []);
 
-      {/* ── Transit stop markers at the START of each transit leg ─────────── */}
-      {selectedJourney?.legs.map((leg, i) => {
-        if (leg.mode === "cycle" || leg.fromLat == null) return null;
-        const color = getLegColor(leg.mode, leg.lineId);
-        return (
-          <CircleMarker
-            key={`from-${i}`}
-            center={[leg.fromLat, leg.fromLon!]}
-            radius={6}
-            pathOptions={{
-              color: "white",
-              fillColor: color,
-              fillOpacity: 1,
-              weight: 2,
-            }}
-          />
-        );
-      })}
+  // ── Resize when becoming visible (mobile tab swap) ──────────────────────
+  useEffect(() => {
+    if (!isVisible || !mapRef.current) return;
+    const t = setTimeout(() => mapRef.current?.resize(), 50);
+    return () => clearTimeout(t);
+  }, [isVisible]);
 
-      {/* ── Transit stop marker at the END of the last transit leg ────────── */}
-      {(() => {
-        if (!selectedJourney) return null;
+  // ── Render markers + route lines whenever the journey changes ───────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Wait for style to finish loading before adding sources/layers
+    const apply = () => {
+      // Clear previous markers
+      for (const m of markersRef.current) m.remove();
+      markersRef.current = [];
+
+      // Clear previous route layers + sources
+      for (const id of routeLayerIdsRef.current) {
+        if (map.getLayer(id)) map.removeLayer(id);
+        const sourceId = id.replace(/-casing$|-line$/, "-src");
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+      }
+      routeLayerIdsRef.current = [];
+
+      // ── Polylines for route legs ──────────────────────────────────────
+      if (selectedJourney) {
+        selectedJourney.legs.forEach((leg, i) => {
+          if (leg.fromLat == null || leg.toLat == null) return;
+          const color = getLegColor(leg.mode, leg.lineId);
+          const isCycle = leg.mode === "cycle";
+          const sourceId = `route-${i}-src`;
+          const casingId = `route-${i}-casing`;
+          const lineId = `route-${i}-line`;
+
+          map.addSource(sourceId, {
+            type: "geojson",
+            data: {
+              type: "Feature",
+              properties: {},
+              geometry: {
+                type: "LineString",
+                coordinates: [
+                  [leg.fromLon!, leg.fromLat],
+                  [leg.toLon!, leg.toLat],
+                ],
+              },
+            },
+          });
+
+          // White casing layer (sits behind)
+          map.addLayer({
+            id: casingId,
+            type: "line",
+            source: sourceId,
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: {
+              "line-color": "#ffffff",
+              "line-width": isCycle ? 8 : 10,
+              "line-opacity": 0.9,
+            },
+          });
+
+          // Coloured line on top (dashed for cycle legs)
+          map.addLayer({
+            id: lineId,
+            type: "line",
+            source: sourceId,
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: {
+              "line-color": color,
+              "line-width": isCycle ? 5 : 6,
+              "line-opacity": 1,
+              ...(isCycle ? { "line-dasharray": [2, 1.5] } : {}),
+            },
+          });
+
+          routeLayerIdsRef.current.push(casingId, lineId);
+        });
+
+        // ── Transit stop circles at the start of each transit leg ─────
+        selectedJourney.legs.forEach((leg) => {
+          if (leg.mode === "cycle" || leg.fromLat == null) return;
+          const color = getLegColor(leg.mode, leg.lineId);
+          const m = new maplibregl.Marker({ element: makeStopMarkerEl(color) })
+            .setLngLat([leg.fromLon!, leg.fromLat])
+            .addTo(map);
+          markersRef.current.push(m);
+        });
+
+        // Stop circle at end of last transit leg
         const lastTransit = [...selectedJourney.legs]
           .reverse()
           .find((l) => l.mode !== "cycle");
-        if (!lastTransit?.toLat) return null;
-        const color = getLegColor(lastTransit.mode, lastTransit.lineId);
-        return (
-          <CircleMarker
-            center={[lastTransit.toLat, lastTransit.toLon!]}
-            radius={6}
-            pathOptions={{
-              color: "white",
-              fillColor: color,
-              fillOpacity: 1,
-              weight: 2,
-            }}
-          />
-        );
-      })()}
+        if (lastTransit?.toLat != null) {
+          const color = getLegColor(lastTransit.mode, lastTransit.lineId);
+          const m = new maplibregl.Marker({ element: makeStopMarkerEl(color) })
+            .setLngLat([lastTransit.toLon!, lastTransit.toLat])
+            .addTo(map);
+          markersRef.current.push(m);
+        }
+      }
 
-      {/* ── Origin (A) and destination (B) markers — on top of everything ─── */}
-      {fromPlace && (
-        <Marker position={[fromPlace.lat, fromPlace.lon]} icon={originIcon} />
-      )}
-      {toPlace && (
-        <Marker position={[toPlace.lat, toPlace.lon]} icon={destIcon} />
-      )}
-    </MapContainer>
+      // ── Origin (A) and destination (B) markers ────────────────────────
+      if (fromPlace) {
+        const m = new maplibregl.Marker({
+          element: makeAbMarkerEl("A", "#16a34a"),
+        })
+          .setLngLat([fromPlace.lon, fromPlace.lat])
+          .addTo(map);
+        markersRef.current.push(m);
+      }
+      if (toPlace) {
+        const m = new maplibregl.Marker({
+          element: makeAbMarkerEl("B", "#dc2626"),
+        })
+          .setLngLat([toPlace.lon, toPlace.lat])
+          .addTo(map);
+        markersRef.current.push(m);
+      }
+
+      // ── Auto-fit bounds ───────────────────────────────────────────────
+      const coords: [number, number][] = [];
+      if (fromPlace) coords.push([fromPlace.lon, fromPlace.lat]);
+      if (toPlace) coords.push([toPlace.lon, toPlace.lat]);
+      if (selectedJourney) {
+        for (const leg of selectedJourney.legs) {
+          if (leg.fromLat != null) coords.push([leg.fromLon!, leg.fromLat]);
+          if (leg.toLat != null) coords.push([leg.toLon!, leg.toLat]);
+        }
+      }
+      if (coords.length >= 2) {
+        const bounds = coords.reduce(
+          (b, c) => b.extend(c),
+          new maplibregl.LngLatBounds(coords[0], coords[0])
+        );
+        map.fitBounds(bounds, { padding: 60, duration: 600, maxZoom: 16 });
+      } else if (coords.length === 1) {
+        map.flyTo({ center: coords[0], zoom: 14, duration: 600 });
+      }
+    };
+
+    if (styleLoadedRef.current) {
+      apply();
+    } else {
+      map.once("load", apply);
+    }
+  }, [fromPlace, toPlace, selectedJourney]);
+
+  return (
+    <div className="w-full h-full relative">
+      <div ref={containerRef} className="w-full h-full" />
+      <div
+        ref={fallbackRef}
+        className="absolute inset-0 items-center justify-center bg-muted text-muted-foreground text-sm p-6 text-center"
+        style={{ display: "none" }}
+      >
+        Map preview unavailable in this environment (WebGL not supported).
+        Routes still work — open this app in any modern browser to see the map.
+      </div>
+    </div>
   );
 }

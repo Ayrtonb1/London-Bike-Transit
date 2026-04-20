@@ -31,12 +31,12 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 ### London Bike Transit Planner (`artifacts/london-bike-transit`)
 - **Preview path**: `/`
 - **Kind**: React + Vite web app
-- **Description**: Google Maps-style transit planner for London that replaces walking legs with cycling time. Uses TfL Journey Planner API and Leaflet/OpenStreetMap.
+- **Description**: Google Maps-style transit planner for London that replaces walking legs with cycling time. Uses TfL Journey Planner API and MapLibre GL JS with OpenFreeMap vector tiles (free, no API key, no rate limits).
 - **Key features**:
   - Typeahead location search using Nominatim (OSM)
   - TfL public transport routing (Tube, Bus, Overground, Elizabeth line, DLR, National Rail)
   - Walking legs automatically replaced with cycling time estimates
-  - Interactive Leaflet map with colour-coded route legs
+  - Interactive MapLibre vector map with colour-coded route legs
   - Green dashed lines for cycling-substituted walking legs
   - TfL tube line colour coding
   - Journey time savings badge (cycling vs walking)
