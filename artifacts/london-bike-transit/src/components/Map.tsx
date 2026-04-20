@@ -79,11 +79,10 @@ export function Map({ fromPlace, toPlace, selectedJourney, isVisible = true }: M
     try {
       const map = new maplibregl.Map({
         container: containerRef.current,
-        // OpenMapTiles "Basic" (Klokantech) style, served locally with all
-        // tile/glyph/sprite sources rewritten to OpenFreeMap. Free, no API
-        // key, no rate limits — same vector data as Google Maps' style of
-        // crisp labels and smooth zoom, in the minimal Basic styling.
-        style: `${import.meta.env.BASE_URL}basic-style.json`,
+        // OpenFreeMap "Positron" — clean all-grey minimal style. Free, no
+        // API key, no rate limits. Light grey land + roads, subtle labels:
+        // perfect neutral backdrop for coloured route overlays.
+        style: "https://tiles.openfreemap.org/styles/positron",
         center: [-0.09, 51.505],
         zoom: 11,
         attributionControl: { compact: true },
