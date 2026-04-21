@@ -5,21 +5,30 @@ import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { VitePWA } from "vite-plugin-pwa";
 
+// PORT is only required for the dev / preview server (Replit-hosted web).
+// The iOS Capacitor build never starts a server — it just bundles assets —
+// so PORT is optional in that codepath.
+const isIosBuild = process.env.BUILD_TARGET === "ios";
+
 const rawPort = process.env.PORT;
 
-if (!rawPort) {
+if (!rawPort && !isIosBuild) {
   throw new Error(
     "PORT environment variable is required but was not provided.",
   );
 }
 
-const port = Number(rawPort);
+const port = rawPort ? Number(rawPort) : 0;
 
-if (Number.isNaN(port) || port <= 0) {
+if (rawPort && (Number.isNaN(port) || port <= 0)) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const basePath = process.env.BASE_PATH;
+// When building the iOS Capacitor bundle we set BUILD_TARGET=ios so the app
+// is served from the root of the bundled WKWebView (capacitor://localhost/)
+// rather than the Replit hosted path prefix. The web build keeps using
+// BASE_PATH so it continues to work behind the platform's path-routed proxy.
+const basePath = isIosBuild ? "/" : process.env.BASE_PATH;
 
 if (!basePath) {
   throw new Error(
@@ -33,7 +42,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
-    VitePWA({
+    // Skip the PWA service worker for the iOS build — Capacitor ships the
+    // bundled assets natively, and a SW would aggressively cache them in a
+    // way that conflicts with native app updates pushed via the App Store.
+    ...(isIosBuild ? [] : [VitePWA({
       registerType: "autoUpdate",
       injectRegister: "auto",
       manifest: {
@@ -98,7 +110,7 @@ export default defineConfig({
         ],
       },
       devOptions: { enabled: false },
-    }),
+    })]),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [

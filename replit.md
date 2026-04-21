@@ -40,6 +40,13 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
   - Green dashed lines for cycling-substituted walking legs
   - TfL tube line colour coding
   - Journey time savings badge (cycling vs walking)
+- **iOS app (Capacitor)**:
+  - Bundle ID `com.ayrton.navelo`, app name "Navelo"
+  - Native plugins wired: Geolocation ("use my location" button), Haptics (taps + success), StatusBar, SplashScreen, Share, Keyboard
+  - `pnpm run build:ios` produces a base-`/` web bundle for the WKWebView (PWA service worker disabled in this build)
+  - `pnpm run ios:sync` builds + copies into the Xcode project (`ios/`)
+  - `pnpm run ios:open` opens Xcode (Mac required)
+  - Setup, build and App Store submission steps documented in `IOS_SETUP.md`
 
 ### API Server (`artifacts/api-server`)
 - **Preview path**: `/api`

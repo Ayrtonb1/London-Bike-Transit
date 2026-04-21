@@ -13,8 +13,9 @@ import {
   type PlanningTime,
 } from "@/lib/transit";
 import { getPeakStatus } from "@/lib/bikeRules";
-import { Bike, Compass, Clock, AlertTriangle, Navigation, ChevronLeft } from "lucide-react";
+import { Bike, Compass, Clock, AlertTriangle, Navigation, ChevronLeft, LocateFixed, Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { getCurrentLocation, hapticTap, hapticSuccess } from "@/lib/native";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -85,10 +86,38 @@ export default function Home() {
     if (routeData?.journeys?.length) {
       setSelectedJourneyId(routeData.journeys[0].id);
       setMobileTab("routes"); // return to route list when new results arrive
+      // Native iOS: gentle success buzz when new viable routes arrive.
+      void hapticSuccess();
     } else {
       setSelectedJourneyId(null);
     }
   }, [routeData]);
+
+  // ── "Use my current location" ───────────────────────────────────────────
+  // On iOS this triggers the native CoreLocation permission prompt; on the
+  // web it falls back to the browser geolocation API. The picked coordinate
+  // becomes the "from" place so the user can plan a route from where they
+  // are with a single tap.
+  const [isLocating, setIsLocating] = useState(false);
+  async function useMyLocation() {
+    void hapticTap();
+    setIsLocating(true);
+    try {
+      const coords = await getCurrentLocation();
+      if (!coords) return;
+      setFromPlace({
+        id: `gps:${coords.lat.toFixed(5)},${coords.lon.toFixed(5)}`,
+        name: "Current location",
+        address: `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}`,
+        lat: coords.lat,
+        lon: coords.lon,
+        type: "gps",
+      });
+      setSelectedJourneyId(null);
+    } finally {
+      setIsLocating(false);
+    }
+  }
 
   const selectedJourney: Journey | null =
     routeData?.journeys?.find((j) => j.id === selectedJourneyId) ?? null;
@@ -224,14 +253,32 @@ export default function Home() {
 
           {/* Search inputs */}
           <div className="space-y-2.5">
-            <SearchBox
-              placeholder="Where from?"
-              value={fromPlace}
-              onSelect={(place) => {
-                setFromPlace(place);
-                setSelectedJourneyId(null);
-              }}
-            />
+            <div className="flex gap-2 items-stretch">
+              <div className="flex-1 min-w-0">
+                <SearchBox
+                  placeholder="Where from?"
+                  value={fromPlace}
+                  onSelect={(place) => {
+                    setFromPlace(place);
+                    setSelectedJourneyId(null);
+                  }}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={useMyLocation}
+                disabled={isLocating}
+                aria-label="Use my current location"
+                title="Use my current location"
+                className="shrink-0 w-11 rounded-xl border border-border bg-background hover:bg-muted active:opacity-80 flex items-center justify-center text-primary disabled:opacity-50 transition-colors"
+              >
+                {isLocating ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <LocateFixed className="w-4 h-4" />
+                )}
+              </button>
+            </div>
             <SearchBox
               placeholder="Where to?"
               value={toPlace}
@@ -343,7 +390,10 @@ export default function Home() {
                         journey={journey}
                         isSelected={selectedJourneyId === journey.id}
                         cycleOnlyMinutes={cycleOnlyMinutes}
-                        onClick={() => setSelectedJourneyId(journey.id)}
+                        onClick={() => {
+                          void hapticTap();
+                          setSelectedJourneyId(journey.id);
+                        }}
                       />
                     ))}
                   </>
@@ -357,7 +407,10 @@ export default function Home() {
         {selectedJourney && (
           <div className="md:hidden border-t border-border bg-background p-3 shrink-0">
             <button
-              onClick={() => setMobileTab("map")}
+              onClick={() => {
+                void hapticTap();
+                setMobileTab("map");
+              }}
               className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl py-3 text-sm font-bold shadow-sm active:opacity-80 transition-opacity"
             >
               <Navigation className="w-4 h-4" />
