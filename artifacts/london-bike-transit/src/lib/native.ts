@@ -5,32 +5,21 @@
  * to its standard browser equivalent (or a no-op).
  */
 import { Capacitor } from "@capacitor/core";
-import { Geolocation } from "@capacitor/geolocation";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 
 export const isNative = Capacitor.isNativePlatform();
 export const platform = Capacitor.getPlatform(); // "ios" | "android" | "web"
 
-/** Get the user's current GPS position, prompting for permission if needed. */
+/**
+ * Get the user's current GPS position via the standard browser Geolocation API.
+ * This works inside WKWebView on iOS and triggers the system permission prompt
+ * using the NSLocationWhenInUseUsageDescription string in Info.plist.
+ */
 export async function getCurrentLocation(): Promise<{
   lat: number;
   lon: number;
 } | null> {
   try {
-    if (isNative) {
-      // Ensure permission first so we get a clean "denied" instead of a throw.
-      const perm = await Geolocation.checkPermissions();
-      if (perm.location !== "granted") {
-        const req = await Geolocation.requestPermissions();
-        if (req.location !== "granted") return null;
-      }
-      const pos = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 8000,
-      });
-      return { lat: pos.coords.latitude, lon: pos.coords.longitude };
-    }
-    // Browser fallback
     if (!("geolocation" in navigator)) return null;
     return await new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
