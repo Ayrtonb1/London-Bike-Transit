@@ -7,7 +7,6 @@
 import { Capacitor } from "@capacitor/core";
 import { Geolocation } from "@capacitor/geolocation";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
-import { Share } from "@capacitor/share";
 
 export const isNative = Capacitor.isNativePlatform();
 export const platform = Capacitor.getPlatform(); // "ios" | "android" | "web"
@@ -65,17 +64,13 @@ export async function hapticSuccess(): Promise<void> {
   }
 }
 
-/** Open the native iOS share sheet (or fall back to Web Share API). */
+/** Open the native share sheet via the Web Share API. */
 export async function shareJourney(opts: {
   title: string;
   text: string;
   url?: string;
 }): Promise<void> {
   try {
-    if (isNative) {
-      await Share.share({ title: opts.title, text: opts.text, url: opts.url });
-      return;
-    }
     if ("share" in navigator) {
       await navigator.share({ title: opts.title, text: opts.text, url: opts.url });
     }
