@@ -1,0 +1,44 @@
+(base) MacBook-Pro-26:london-bike-transit ayrton$ pnpm run ios:sync
+grep -i statusbar ios/App/CapApp-SPM/Package.swift
+
+> @workspace/london-bike-transit@0.0.0 ios:sync /Users/ayrton/Developer/London-Bike-Transit/artifacts/london-bike-transit
+> pnpm run build:ios && cap sync ios
+
+
+> @workspace/london-bike-transit@0.0.0 build:ios /Users/ayrton/Developer/London-Bike-Transit/artifacts/london-bike-transit
+> BUILD_TARGET=ios BASE_PATH=/ vite build --config vite.config.ts
+
+vite v7.3.1 building client environment for production...
+src/components/ui/tooltip.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+✓ 1800 modules transformed.
+dist/public/index.html                     1.32 kB │ gzip:   0.60 kB
+dist/public/assets/index-XQFjQLM9.css    170.13 kB │ gzip:  26.60 kB
+dist/public/assets/web-DKN-n1Js.js         0.12 kB │ gzip:   0.13 kB
+dist/public/assets/web-BzVrSIsw.js         0.36 kB │ gzip:   0.25 kB
+dist/public/assets/web-PALDwoMO.js         0.90 kB │ gzip:   0.45 kB
+dist/public/assets/web-BQwqEdIB.js         2.30 kB │ gzip:   0.92 kB
+dist/public/assets/index-D0VMnc7H.js   1,446.46 kB │ gzip: 411.79 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 12.40s
+✔ Copying web assets from public to ios/App/App/public in 56.34ms
+✔ Creating capacitor.config.json in ios/App/App in 2.64ms
+✔ copy ios in 194.54ms
+✔ Updating iOS plugins in 22.70ms
+[info] All plugins have a Package.swift file and will be included in
+       Package.swift
+[info] Writing Package.swift
+⠹ update ios [info] Found 6 Capacitor plugins for ios:
+       @capacitor/app@8.1.0
+       @capacitor/geolocation@8.2.0
+       @capacitor/haptics@8.0.2
+       @capacitor/keyboard@8.0.3
+       @capacitor/share@8.0.1
+       @capacitor/splash-screen@8.0.1
+✔ update ios in 187.10ms
+[info] Sync finished in 0.631s
+(base) MacBook-Pro-26:london-bike-transit ayrton$ grep -i statusbar ios/App/CapApp-SPM/Package.swift
+(base) MacBook-Pro-26:london-bike-transit ayrton$ 
