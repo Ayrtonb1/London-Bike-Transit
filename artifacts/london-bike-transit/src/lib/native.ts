@@ -8,7 +8,6 @@ import { Capacitor } from "@capacitor/core";
 import { Geolocation } from "@capacitor/geolocation";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 import { Share } from "@capacitor/share";
-import { SplashScreen } from "@capacitor/splash-screen";
 
 export const isNative = Capacitor.isNativePlatform();
 export const platform = Capacitor.getPlatform(); // "ios" | "android" | "web"
@@ -86,18 +85,18 @@ export async function shareJourney(opts: {
 }
 
 /**
- * Dismiss the splash screen once the app shell has rendered.
+ * Initialise native-only behaviour after the app shell has rendered.
  *
- * Status bar appearance is controlled via Info.plist
- * (UIStatusBarStyle / UIViewControllerBasedStatusBarAppearance) rather than
- * the Capacitor StatusBar plugin to avoid a known incompatibility between
- * @capacitor/status-bar 8.0.2 and @capacitor/core 8.3.x.
+ * Status bar style is configured via Info.plist (UIStatusBarStyle /
+ * UIViewControllerBasedStatusBarAppearance). The launch screen is dismissed
+ * automatically by iOS once the WKWebView reports it has rendered.
+ *
+ * Both the @capacitor/status-bar and @capacitor/splash-screen plugins are
+ * intentionally NOT used because their iOS source still references older
+ * Capacitor Swift APIs that are incompatible with capacitor-swift-pm 8.3.x
+ * (UIColor.fromHex was renamed to argb, PluginConfig.getString removed).
  */
 export async function initNativeShell(): Promise<void> {
   if (!isNative) return;
-  try {
-    await SplashScreen.hide();
-  } catch {
-    /* ignore */
-  }
+  /* nothing to do at the moment */
 }
