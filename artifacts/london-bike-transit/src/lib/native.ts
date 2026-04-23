@@ -8,7 +8,6 @@ import { Capacitor } from "@capacitor/core";
 import { Geolocation } from "@capacitor/geolocation";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 import { Share } from "@capacitor/share";
-import { StatusBar, Style } from "@capacitor/status-bar";
 import { SplashScreen } from "@capacitor/splash-screen";
 
 export const isNative = Capacitor.isNativePlatform();
@@ -87,18 +86,15 @@ export async function shareJourney(opts: {
 }
 
 /**
- * Configure the iOS status bar to match the app's white surface and dismiss
- * the splash screen once the app shell has rendered.
+ * Dismiss the splash screen once the app shell has rendered.
+ *
+ * Status bar appearance is controlled via Info.plist
+ * (UIStatusBarStyle / UIViewControllerBasedStatusBarAppearance) rather than
+ * the Capacitor StatusBar plugin to avoid a known incompatibility between
+ * @capacitor/status-bar 8.0.2 and @capacitor/core 8.3.x.
  */
 export async function initNativeShell(): Promise<void> {
   if (!isNative) return;
-  try {
-    await StatusBar.setStyle({ style: Style.Light }); // dark icons on white bg
-    await StatusBar.setBackgroundColor({ color: "#ffffff" });
-    await StatusBar.setOverlaysWebView({ overlay: false });
-  } catch {
-    /* not all platforms expose every method (e.g. iOS ignores bg color) */
-  }
   try {
     await SplashScreen.hide();
   } catch {
