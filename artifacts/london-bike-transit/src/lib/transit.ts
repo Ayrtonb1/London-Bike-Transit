@@ -146,17 +146,26 @@ type NominatimItem = {
   type: string;
 };
 
+let _nominatimLastCall = 0;
+let _nominatimQueue = Promise.resolve();
+
 async function nominatimSearch(params: Record<string, string>): Promise<NominatimItem[]> {
   const url = new URLSearchParams({ format: "json", addressdetails: "1", ...params });
-  try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?${url.toString()}`, {
-      headers: { "Accept-Language": "en" },
-    });
-    if (!res.ok) return [];
-    return res.json();
-  } catch {
-    return [];
-  }
+  const result = await (_nominatimQueue = _nominatimQueue.then(async () => {
+    const wait = Math.max(0, 350 - (Date.now() - _nominatimLastCall));
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    _nominatimLastCall = Date.now();
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?${url.toString()}`, {
+        headers: { "Accept-Language": "en" },
+      });
+      if (!res.ok) return [] as NominatimItem[];
+      return res.json() as Promise<NominatimItem[]>;
+    } catch {
+      return [] as NominatimItem[];
+    }
+  }));
+  return result;
 }
 
 function toPlace(item: NominatimItem): Place {

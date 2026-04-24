@@ -15,7 +15,7 @@ export function SearchBox({ placeholder, onSelect, value }: SearchBoxProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [places, setPlaces] = useState<Place[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const debouncedQuery = useDebounce(query, 350);
+  const debouncedQuery = useDebounce(query, 500);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const doSearch = useCallback(async (q: string) => {
