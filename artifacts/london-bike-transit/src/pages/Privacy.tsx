@@ -88,8 +88,8 @@ export default function Privacy() {
         <h2 className="text-xl font-semibold mb-2">Contact</h2>
         <p className="text-sm leading-relaxed">
           If you have any questions about this privacy policy, please contact:{" "}
-          <a href="mailto:ayrton@example.com" className="underline text-blue-500">
-            ayrton@example.com
+          <a href="mailto:ayrtonburgess@hotmail.co.uk" className="underline text-blue-500">
+            ayrtonburgess@hotmail.co.uk
           </a>
         </p>
       </section>
