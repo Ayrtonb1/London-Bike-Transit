@@ -6,15 +6,26 @@ echo "=== Xcode Cloud post-clone: building Navelo web app ==="
 node --version
 npm --version
 
-# Install pnpm via npm (Node is pre-installed on Xcode Cloud)
+# Install pnpm into a user-writable location (avoids permission issues)
+npm config set prefix "$HOME/.npm-global"
+export PATH="$HOME/.npm-global/bin:$PATH"
 npm install -g pnpm@9
-
-export PNPM_HOME="$HOME/.local/share/pnpm"
-export PATH="$PNPM_HOME:$PATH"
-
 pnpm --version
 
 cd "$CI_PRIMARY_REPOSITORY_PATH"
+
+# Safety net: remove any incompatible local-path plugins from Package.swift
+PACKAGE_SWIFT="artifacts/london-bike-transit/ios/App/CapApp-SPM/Package.swift"
+sed -i '' '/CapacitorGeolocation/d'  "$PACKAGE_SWIFT"
+sed -i '' '/CapacitorApp\b/d'        "$PACKAGE_SWIFT"
+sed -i '' '/CapacitorShare/d'        "$PACKAGE_SWIFT"
+sed -i '' '/CapacitorSplashScreen/d' "$PACKAGE_SWIFT"
+sed -i '' '/CapacitorStatusBar/d'    "$PACKAGE_SWIFT"
+sed -i '' '/CapacitorHaptics/d'      "$PACKAGE_SWIFT"
+sed -i '' '/CapacitorKeyboard/d'     "$PACKAGE_SWIFT"
+
+echo "=== Package.swift after cleanup ==="
+cat "$PACKAGE_SWIFT"
 
 # Install workspace dependencies
 pnpm install --no-frozen-lockfile
