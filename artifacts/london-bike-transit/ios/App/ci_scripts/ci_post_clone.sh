@@ -1,20 +1,30 @@
 #!/bin/sh
 set -e
 
+# Add Homebrew paths (Intel and Apple Silicon)
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:$PATH"
+
 echo "=== Xcode Cloud post-clone: building Navelo web app ==="
+echo "PATH: $PATH"
+
+# Ensure Node.js is available
+if ! command -v node >/dev/null 2>&1; then
+    echo "Node not found, installing via Homebrew..."
+    brew install node
+fi
 
 node --version
 npm --version
 
-# Install pnpm into a user-writable location (avoids permission issues)
+# Install pnpm into a user-writable location
 npm config set prefix "$HOME/.npm-global"
-export PATH="$HOME/.npm-global/bin:$PATH"
 npm install -g pnpm@9
+export PATH="$HOME/.npm-global/bin:$PATH"
 pnpm --version
 
 cd "$CI_PRIMARY_REPOSITORY_PATH"
 
-# Safety net: remove any incompatible local-path plugins from Package.swift
+# Safety net: remove any local-path plugin entries from Package.swift
 PACKAGE_SWIFT="artifacts/london-bike-transit/ios/App/CapApp-SPM/Package.swift"
 sed -i '' '/CapacitorGeolocation/d'  "$PACKAGE_SWIFT"
 sed -i '' '/CapacitorApp\b/d'        "$PACKAGE_SWIFT"
