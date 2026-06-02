@@ -1,0 +1,37 @@
+{
+	"appId": "com.ayrton.navelo",
+	"appName": "Navelo",
+	"webDir": "dist/public",
+	"ios": {
+		"contentInset": "always",
+		"backgroundColor": "#ffffff",
+		"scrollEnabled": true
+	},
+	"plugins": {
+		"SplashScreen": {
+			"launchShowDuration": 800,
+			"backgroundColor": "#ffffff",
+			"iosSpinnerStyle": "small",
+			"showSpinner": false
+		},
+		"StatusBar": {
+			"style": "DARK",
+			"backgroundColor": "#ffffff",
+			"overlaysWebView": false
+		},
+		"Keyboard": {
+			"resize": "native",
+			"style": "DEFAULT",
+			"resizeOnFullScreen": true
+		}
+	},
+	"packageClassList": [
+		"AppPlugin",
+		"GeolocationPlugin",
+		"HapticsPlugin",
+		"KeyboardPlugin",
+		"SharePlugin",
+		"SplashScreenPlugin",
+		"StatusBarPlugin"
+	]
+}
