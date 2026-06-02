@@ -1,0 +1,35 @@
+> @workspace/london-bike-transit@0.0.0 build /Volumes/workspace/repository/artifacts/london-bike-transit
+
+> vite build --config vite.config.ts
+
+[31mfailed to load config from /Volumes/workspace/repository/artifacts/london-bike-transit/vite.config.ts[39m
+
+[31merror during build:
+
+Error: PORT environment variable is required but was not provided.
+
+    at file:///Volumes/workspace/repository/artifacts/london-bike-transit/node_modules/.vite-temp/vite.config.ts.timestamp-1780414174345-098bef8a77c868.mjs:12:9
+
+    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)
+
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:642:26)
+
+    at async loadConfigFromBundledFile (file:///Volumes/workspace/repository/node_modules/.pnpm/vite@7.3.1_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_terser@5.46.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:35909:12)
+
+    at async bundleAndLoadConfigFile (file:///Volumes/workspace/repository/node_modules/.pnpm/vite@7.3.1_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_terser@5.46.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:35797:17)
+
+    at async loadConfigFromFile (file:///Volumes/workspace/repository/node_modules/.pnpm/vite@7.3.1_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_terser@5.46.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:35764:42)
+
+    at async resolveConfig (file:///Volumes/workspace/repository/node_modules/.pnpm/vite@7.3.1_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_terser@5.46.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:35413:22)
+
+    at async createBuilder (file:///Volumes/workspace/repository/node_modules/.pnpm/vite@7.3.1_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_terser@5.46.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:33875:19)
+
+    at async CAC.<anonymous> (file:///Volumes/workspace/repository/node_modules/.pnpm/vite@7.3.1_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_terser@5.46.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/cli.js:629:10)[39m
+
+ ELIFECYCLE  Command failed with exit code 1.
+
+Error
+Command exited with non-zero exit-code: 1
+
+Warning
+Running ci_post_clone.sh script failed (exited with code 1). Executable scripts are run using the interpreter specified in the shebang line. 
