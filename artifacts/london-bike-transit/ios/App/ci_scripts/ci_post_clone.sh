@@ -18,9 +18,8 @@ fi
 node --version
 npm --version
 
-# Use corepack (bundled with Node.js 16.9+) to activate pnpm — no permissions needed
-corepack enable
-corepack prepare pnpm@9 --activate
+# Install pnpm (corepack was removed from Node.js 23+)
+npm install -g pnpm@9
 pnpm --version
 
 cd "$CI_PRIMARY_REPOSITORY_PATH"
