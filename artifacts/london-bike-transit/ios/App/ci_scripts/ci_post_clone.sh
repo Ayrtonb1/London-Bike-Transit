@@ -41,9 +41,9 @@ cat "$PACKAGE_SWIFT"
 # Install workspace dependencies
 pnpm install --no-frozen-lockfile
 
-# Build the web app (iOS target — no PORT needed, base path is /)
+# Build the web app — set iOS env vars explicitly so PORT is not required
 cd artifacts/london-bike-transit
-pnpm run build:ios
+BUILD_TARGET=ios BASE_PATH=/ pnpm run build:ios
 
 # Copy web bundle into the iOS public folder
 mkdir -p ios/App/App/public
