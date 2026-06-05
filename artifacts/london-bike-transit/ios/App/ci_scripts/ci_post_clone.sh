@@ -45,7 +45,8 @@ cd artifacts/london-bike-transit
 BUILD_TARGET=ios BASE_PATH=/ pnpm run build:ios
 
 # Copy web bundle into the iOS public folder
+# Vite outputs to dist/public/ (matching webDir in capacitor.config.ts)
 mkdir -p ios/App/App/public
-cp -r dist/* ios/App/App/public/
+cp -r dist/public/* ios/App/App/public/
 
 echo "=== Post-clone complete ==="
