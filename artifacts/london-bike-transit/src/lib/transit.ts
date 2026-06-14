@@ -272,7 +272,12 @@ type TflStopPoint = {
   lines: { id: string; name: string }[];
 };
 
-function buildJourney(journey: TflJourney, jIdx: number): Journey {
+function buildJourney(
+  journey: TflJourney,
+  jIdx: number,
+  opts: { substituteWalking?: boolean } = {},
+): Journey {
+  const substituteWalking = opts.substituteWalking ?? true;
   let totalDuration = 0;
   const originalDuration = journey.duration;
   let cyclingDuration = 0;
@@ -286,7 +291,7 @@ function buildJourney(journey: TflJourney, jIdx: number): Journey {
     let finalDuration = leg.duration;
     let isSubstituted = false;
 
-    if (isWalking) {
+    if (isWalking && substituteWalking) {
       finalMode = "cycle";
       finalDuration = cycleDuration(distanceMeters);
       isSubstituted = true;
@@ -574,13 +579,17 @@ async function fetchWithTimeout(
   }
 }
 
-async function fetchTflJourneys(url: string, offset: number): Promise<Journey[]> {
+async function fetchTflJourneys(
+  url: string,
+  offset: number,
+  opts: { substituteWalking?: boolean } = {},
+): Promise<Journey[]> {
   try {
     const res = await fetchWithTimeout(url);
     if (!res || !res.ok) return [];
     const data = await res.json();
     return (data.journeys ?? [] as TflJourney[]).map(
-      (j: TflJourney, i: number) => buildJourney(j, offset + i)
+      (j: TflJourney, i: number) => buildJourney(j, offset + i, opts)
     );
   } catch {
     return [];
@@ -808,10 +817,10 @@ async function findMaxSingleTransitJourneys(
   });
 
   // For each top pair, plan transit station → station and wrap with cycling legs.
-  // Capped at 2 to keep mobile latency in check — the pairs are sorted by
-  // shortest total cycling distance, so the top 2 are the strongest candidates.
+  // Capped at 3 to keep mobile latency in check — the pairs are sorted by
+  // shortest total cycling distance, so the top 3 are the strongest candidates.
   const results = await Promise.all(
-    uniquePairs.slice(0, 2).map(async (pair, idx) => {
+    uniquePairs.slice(0, 3).map(async (pair, idx) => {
       const journeysToStop = await fetchTflJourneys(
         buildTflUrl(pair.origin.lat, pair.origin.lon, pair.dest.lat, pair.dest.lon, bikeFriendlyModes, planningTime),
         600 + idx * 10
@@ -884,6 +893,87 @@ async function findMaxSingleTransitJourneys(
   return results.filter((j): j is Journey => j !== null);
 }
 
+/**
+ * Lock-bike mode: find all transit stops near origin (no bike restriction),
+ * plan the transit leg with ALL modes (bike is locked at the station), and
+ * prepend a cycling leg from origin to each stop.
+ */
+async function findLockBikeJourneys(
+  fromLat: number,
+  fromLon: number,
+  toLat: number,
+  toLon: number,
+  fromLabel: string,
+  toLabel: string,
+  planningTime?: PlanningTime,
+): Promise<Journey[]> {
+  const ALL_MODES =
+    "tube,bus,national-rail,overground,elizabeth-line,dlr,walking,river-bus";
+
+  // All transit stops near origin — no bike-viability filter
+  const stopUrl =
+    `https://api.tfl.gov.uk/StopPoint` +
+    `?lat=${fromLat}&lon=${fromLon}` +
+    `&stopTypes=NaptanMetroStation,NaptanRailStation` +
+    `&radius=5000` +
+    `&modes=tube,overground,national-rail,elizabeth-line,dlr` +
+    `&returnLines=true`;
+
+  let stops: TflStopPoint[] = [];
+  try {
+    const res = await fetchWithTimeout(stopUrl);
+    if (res?.ok) {
+      const data = await res.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      stops = (data.stopPoints ?? []).map((s: any): TflStopPoint => ({
+        id: s.id ?? s.naptanId,
+        commonName: s.commonName,
+        lat: s.lat,
+        lon: s.lon,
+        modes: s.modes ?? [],
+        lines: s.lines ?? [],
+      }));
+    }
+  } catch { /* ignore */ }
+
+  if (stops.length === 0) return [];
+
+  // Sort by cycle distance from origin, take top 4 candidate stations
+  const candidates = stops
+    .map((stop) => ({
+      stop,
+      dist: Math.round(haversineMetres(fromLat, fromLon, stop.lat, stop.lon) * 1.4),
+    }))
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, 4);
+
+  // For each candidate, plan transit from that station → destination (ALL modes,
+  // no walking→cycling substitution since the bike stays at the lock stop).
+  const results = await Promise.all(
+    candidates.map(async ({ stop, dist }, idx) => {
+      const journeys = await fetchTflJourneys(
+        buildTflUrl(stop.lat, stop.lon, toLat, toLon, ALL_MODES, planningTime),
+        700 + idx * 10,
+        { substituteWalking: false },
+      );
+      return journeys.slice(0, 2).map((j) =>
+        prependCycleLeg(
+          j,
+          fromLabel,
+          stop.commonName,
+          dist,
+          fromLat,
+          fromLon,
+          stop.lat,
+          stop.lon,
+        )
+      );
+    })
+  );
+
+  return results.flat();
+}
+
 export async function planRoute(
   fromLat: number,
   fromLon: number,
@@ -891,10 +981,43 @@ export async function planRoute(
   toLon: number,
   fromName?: string,
   toName?: string,
-  planningTime?: PlanningTime
+  planningTime?: PlanningTime,
+  lockBike = false,
 ): Promise<RouteResponse> {
   const fromLabel = fromName ?? `${fromLat}, ${fromLon}`;
   const toLabel = toName ?? `${toLat}, ${toLon}`;
+
+  // ── Lock-bike fast path ─────────────────────────────────────────────────
+  // Cycle to a nearby station, lock the bike, take ANY transit to destination.
+  // No bike-rules filtering — the bike stays at the origin station.
+  if (lockBike) {
+    const lockBikeJourneys = await findLockBikeJourneys(
+      fromLat, fromLon, toLat, toLon, fromLabel, toLabel, planningTime
+    );
+    const cycleOnly = synthesisCycleJourney(fromLat, fromLon, toLat, toLon, fromLabel, toLabel);
+    const cycleOnlyMinutes = cycleOnly.totalDurationMinutes;
+
+    function journeyScoreLock(j: Journey): number {
+      if (j.summary === "Cycle only") return Infinity;
+      const transitLegs = j.legs.filter((l) => l.mode !== "cycle" && l.mode !== "walking").length;
+      const changesPenalty = Math.max(0, transitLegs - 1) * 8;
+      return j.totalDurationMinutes + changesPenalty;
+    }
+
+    const deduped = deduplicateJourneys(lockBikeJourneys).sort(
+      (a, b) => journeyScoreLock(a) - journeyScoreLock(b)
+    );
+    deduped.push(cycleOnly);
+
+    const journeys = deduped.slice(0, 5).map((j, i) => ({ ...j, id: `journey-${i}` }));
+    return {
+      journeys,
+      fromName: fromLabel,
+      toName: toLabel,
+      filteredCount: 0,
+      cycleOnlyMinutes,
+    };
+  }
 
   // Use the planned date for peak status and viability checks
   const checkDate = planningTimeToDate(planningTime);
@@ -925,6 +1048,7 @@ export async function planRoute(
   // We synthesise a cycle-only fallback ourselves further down, so we no longer
   // ask TfL for a dedicated cycle,walking journey — that call was pure latency
   // on the critical path with no journeys we couldn't already produce.
+  // 5000m radius ≈ 20-min cycle, giving longer bike legs at both ends.
   const [
     allResults,
     bikeFriendlyResults,
@@ -936,9 +1060,9 @@ export async function planRoute(
     // Bike-friendly routing (no bus; TfL adds walks → we convert to cycling)
     fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, BIKE_FRIENDLY_MODES, planningTime), 100),
     // Viable stops near DESTINATION (for "transit then final-cycle" appending)
-    findNearbyViableStops(toLat, toLon, 3000, isPeak, checkDate),
+    findNearbyViableStops(toLat, toLon, 5000, isPeak, checkDate),
     // Viable stops near ORIGIN (for "initial-cycle then transit" prepending)
-    findNearbyViableStops(fromLat, fromLon, 3000, isPeak, checkDate),
+    findNearbyViableStops(fromLat, fromLon, 5000, isPeak, checkDate),
   ]);
   const cycleResults: Journey[] = [];
 
@@ -957,10 +1081,9 @@ export async function planRoute(
     ),
 
     // 2a: transit to a stop near destination, then cycle the last mile.
-    // Capped at 2 candidates to limit mobile latency (each TfL call ≈ 1–2s on
-    // 4G); the top 2 dominate the result set after dedup/scoring anyway.
+    // Capped at 3 to widen the candidate pool with the larger 5000m radius.
     Promise.all(
-      nearbyDestStops.slice(0, 2).map(async (stop, idx) => {
+      nearbyDestStops.slice(0, 3).map(async (stop, idx) => {
         const journeysToStop = await fetchTflJourneys(
           buildTflUrl(fromLat, fromLon, stop.lat, stop.lon, SURFACE_BIKE_MODES, planningTime),
           300 + idx * 10
@@ -975,9 +1098,9 @@ export async function planRoute(
     ).then((r) => r.flat()),
 
     // 2b: cycle the first mile to a stop near origin, then transit
-    // (capped at 2 for the same mobile-latency reason as 2a above).
+    // (capped at 3 for the same wider-radius reason as 2a above).
     Promise.all(
-      nearbyOriginStops.slice(0, 2).map(async (stop, idx) => {
+      nearbyOriginStops.slice(0, 3).map(async (stop, idx) => {
         const journeysFromStop = await fetchTflJourneys(
           buildTflUrl(stop.lat, stop.lon, toLat, toLon, SURFACE_BIKE_MODES, planningTime),
           400 + idx * 10

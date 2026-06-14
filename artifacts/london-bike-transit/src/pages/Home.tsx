@@ -13,7 +13,7 @@ import {
   type PlanningTime,
 } from "@/lib/transit";
 import { getPeakStatus } from "@/lib/bikeRules";
-import { Bike, Compass, Clock, AlertTriangle, Navigation, ChevronLeft, LocateFixed, Loader2 } from "lucide-react";
+import { Bike, Compass, Clock, AlertTriangle, Navigation, ChevronLeft, LocateFixed, Loader2, Lock, Info } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getCurrentLocation, hapticTap, hapticSuccess } from "@/lib/native";
 
@@ -36,6 +36,10 @@ export default function Home() {
   const [timeMode, setTimeMode] = useState<"now" | "depart" | "arrive">("now");
   const [planDate, setPlanDate] = useState(todayStr);
   const [planTime, setPlanTime] = useState(nowTimeStr);
+
+  // Lock bike mode
+  const [lockBike, setLockBike] = useState(false);
+  const [showLockInfo, setShowLockInfo] = useState(false);
 
   // Live peak status (updates every minute)
   const [livePeakStatus, setLivePeakStatus] = useState(() => getPeakStatus());
@@ -67,6 +71,7 @@ export default function Home() {
       fromPlace?.lat, fromPlace?.lon,
       toPlace?.lat, toPlace?.lon,
       timeMode, planDate, planTime,
+      lockBike,
     ],
     queryFn: () =>
       planRoute(
@@ -76,7 +81,8 @@ export default function Home() {
         toPlace!.lon,
         fromPlace!.name,
         toPlace!.name,
-        planningTime
+        planningTime,
+        lockBike,
       ),
     enabled: shouldPlanRoute,
     staleTime: timeMode === "now" ? 2 * 60 * 1000 : 10 * 60 * 1000,
@@ -324,6 +330,50 @@ export default function Home() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Lock bike toggle */}
+        <div className="px-5 pb-3 pt-1 border-t border-border bg-background">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Lock className={`w-3.5 h-3.5 ${lockBike ? "text-primary" : "text-muted-foreground"}`} />
+              <span className={`text-sm font-medium ${lockBike ? "text-foreground" : "text-muted-foreground"}`}>
+                Lock bike at start
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowLockInfo((v) => !v)}
+                className="text-muted-foreground hover:text-foreground transition-colors ml-0.5"
+                aria-label="About lock bike mode"
+              >
+                <Info className="w-3 h-3" />
+              </button>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={lockBike}
+              onClick={() => {
+                void hapticTap();
+                setLockBike((v) => !v);
+                setSelectedJourneyId(null);
+              }}
+              className={`relative w-10 h-6 rounded-full transition-colors duration-200 focus:outline-none ${
+                lockBike ? "bg-primary" : "bg-muted-foreground/30"
+              }`}
+            >
+              <span
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                  lockBike ? "left-5" : "left-1"
+                }`}
+              />
+            </button>
+          </div>
+          {showLockInfo && (
+            <div className="mt-2 p-2.5 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-800 leading-relaxed">
+              Cycle to a nearby station and lock your bike there, then travel freely on <strong>any</strong> line — including buses and deep tube. Ideal for longer journeys where taking your bike isn't practical.
+            </div>
+          )}
         </div>
 
         <ScrollArea className="flex-1 bg-muted/30">
