@@ -191,87 +191,9 @@ function nominatimToPlace(item: NominatimItem): Place {
   };
 }
 
-// ── Photon by Komoot — free, no API key, real prefix/typeahead search ─────
-
-type PhotonFeature = {
-  geometry: { coordinates: [number, number] };
-  properties: {
-    name?: string;
-    housenumber?: string;
-    street?: string;
-    district?: string;
-    city?: string;
-    postcode?: string;
-    country?: string;
-    osm_id: number;
-    osm_type: string;
-    type?: string;
-  };
-};
-
 const LONDON_LAT_MIN = 51.28, LONDON_LAT_MAX = 51.7;
 const LONDON_LON_MIN = -0.52, LONDON_LON_MAX = 0.34;
-// Photon bbox: west,south,east,north
-const PHOTON_LONDON_BBOX = "-0.5103,51.2868,0.3340,51.6919";
-
-function photonToPlace(f: PhotonFeature, idx: number): Place {
-  const p = f.properties;
-  const [lon, lat] = f.geometry.coordinates;
-
-  // Primary name line: prefer "12 High Street" over just "High Street"
-  let name: string;
-  if (p.housenumber && p.street) {
-    name = `${p.housenumber} ${p.street}`;
-  } else if (p.name && p.street && p.name !== p.street) {
-    name = `${p.name}, ${p.street}`;
-  } else if (p.name) {
-    name = p.name;
-  } else if (p.street) {
-    name = p.street;
-  } else {
-    name = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-  }
-
-  // Secondary address line: neighbourhood / city / postcode
-  const addrParts: string[] = [];
-  if (p.district && !name.includes(p.district)) addrParts.push(p.district);
-  else if (p.city && p.city !== "London" && !name.includes(p.city)) addrParts.push(p.city);
-  if (p.postcode) addrParts.push(p.postcode);
-
-  return {
-    id: `photon-${p.osm_type}-${p.osm_id}-${idx}`,
-    name,
-    address: addrParts.join(", "),
-    lat,
-    lon,
-    type: p.type ?? "place",
-  };
-}
-
-async function photonSearch(query: string): Promise<Place[]> {
-  const params = new URLSearchParams({
-    q: query,
-    limit: "8",
-    lang: "en",
-    bbox: PHOTON_LONDON_BBOX,
-  });
-  try {
-    const res = await fetch(`https://photon.komoot.io/api/?${params.toString()}`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.features ?? [] as PhotonFeature[])
-      .filter((f: PhotonFeature) => {
-        const [lon, lat] = f.geometry.coordinates;
-        return (
-          lat >= LONDON_LAT_MIN && lat <= LONDON_LAT_MAX &&
-          lon >= LONDON_LON_MIN && lon <= LONDON_LON_MAX
-        );
-      })
-      .map((f: PhotonFeature, i: number) => photonToPlace(f, i));
-  } catch {
-    return [];
-  }
-}
+const LONDON_VIEWBOX = "-0.5103,51.2868,0.3340,51.6919";
 
 // ── TfL StopPoint search — best for tube/rail/bus station names ───────────
 
@@ -347,15 +269,26 @@ export async function searchPlaces(query: string): Promise<Place[]> {
     return deduplicatePlaces([...a, ...b].map(nominatimToPlace)).slice(0, 8);
   }
 
-  // General search: Photon (typeahead addresses) + TfL (stations) in parallel
-  const [photonResults, tflResults] = await Promise.all([
-    photonSearch(q),
+  // General search: Nominatim (addresses, always London-biased) + TfL (stations) in parallel.
+  // Nominatim with viewbox+bounded=1 strongly restricts results to Greater London,
+  // giving the same reliable coordinates the routing was tuned against.
+  const [nominatimResults, tflResults] = await Promise.all([
+    nominatimSearch({
+      q: `${q}, London`,
+      countrycodes: "gb",
+      viewbox: LONDON_VIEWBOX,
+      bounded: "1",
+      limit: "6",
+    }),
     tflStopSearch(q),
   ]);
 
-  // TfL station results first (most accurate for stop names), then Photon addresses.
+  // TfL station results first (exact GPS stop coordinates), then Nominatim addresses.
   // Deduplicate by coordinates so the same place doesn't appear twice.
-  return deduplicateByCoords([...tflResults, ...photonResults]).slice(0, 8);
+  return deduplicateByCoords([
+    ...tflResults,
+    ...nominatimResults.map(nominatimToPlace),
+  ]).slice(0, 8);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
