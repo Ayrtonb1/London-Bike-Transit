@@ -149,7 +149,8 @@ type NominatimItem = {
 };
 
 let _nominatimLastCall = 0;
-let _nominatimQueue = Promise.resolve();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _nominatimQueue: Promise<any> = Promise.resolve();
 
 async function nominatimSearch(params: Record<string, string>): Promise<NominatimItem[]> {
   const url = new URLSearchParams({ format: "json", addressdetails: "1", ...params });
@@ -283,16 +284,19 @@ async function tflStopSearch(query: string): Promise<Place[]> {
     if (!res.ok) return [];
     const data = await res.json();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data.matches ?? []).slice(0, 5).map((s: any, i: number): Place => ({
-      id: `tfl-${s.id}-${i}`,
-      name: s.name,
-      address: (s.modes as string[] ?? [])
-        .map((m: string) => m.replace(/-/g, " "))
-        .join(" · "),
-      lat: s.lat,
-      lon: s.lon,
-      type: "station",
-    }));
+    return (data.matches ?? [])
+      .filter((s: any) => typeof s.lat === "number" && typeof s.lon === "number" && s.lat !== 0 && s.lon !== 0)
+      .slice(0, 5)
+      .map((s: any, i: number): Place => ({
+        id: `tfl-${s.id}-${i}`,
+        name: s.name,
+        address: (s.modes as string[] ?? [])
+          .map((m: string) => m.replace(/-/g, " "))
+          .join(" · "),
+        lat: s.lat,
+        lon: s.lon,
+        type: "station",
+      }));
   } catch {
     return [];
   }
