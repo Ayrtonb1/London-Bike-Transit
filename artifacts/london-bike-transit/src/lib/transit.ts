@@ -1006,9 +1006,55 @@ async function findMaxSingleTransitJourneys(
 }
 
 /**
- * Lock-bike mode: find all transit stops near origin (no bike restriction),
- * plan the transit leg with ALL modes (bike is locked at the station), and
- * prepend a cycling leg from origin to each stop.
+ * Upgrade a journey's first walking leg to a cycling leg.
+ * Used in lock-bike mode: the user cycles to the first stop instead of walking,
+ * arriving faster. All other walking legs stay as walking (bike is locked).
+ */
+function upgradeInitialWalkToCycle(j: Journey): Journey {
+  const first = j.legs[0];
+  if (!first || first.mode !== "walking") return j;
+
+  const dur = cycleDuration(first.distanceMeters);
+  const timeSaved = first.durationMinutes - dur;
+
+  const cycleFirstLeg: RouteLeg = {
+    ...first,
+    mode: "cycle",
+    durationMinutes: dur,
+    instruction: `Cycle to ${first.toName}`,
+    isSubstituted: false,
+  };
+
+  const newLegs = mergeConsecutiveCycleLegs([cycleFirstLeg, ...j.legs.slice(1)]);
+  const transitModes = [
+    ...new Set(newLegs.map((l) => l.mode).filter((m) => m !== "cycle" && m !== "walking")),
+  ];
+  const summary =
+    transitModes.length > 0
+      ? `Cycle + ${transitModes.join(" + ")}`
+      : "Cycle only";
+
+  return {
+    ...j,
+    legs: newLegs,
+    totalDurationMinutes: j.totalDurationMinutes - timeSaved,
+    cyclingDurationMinutes: j.cyclingDurationMinutes + dur,
+    summary,
+  };
+}
+
+/**
+ * Lock-bike mode: two parallel strategies merged together.
+ *
+ * Strategy A — Direct (always returns results):
+ *   Ask TfL to plan with ALL modes from origin. Upgrade any initial walking
+ *   leg to cycling (user cycles to the first stop, then locks bike and boards).
+ *
+ * Strategy B — Stop-based (longer cycle legs):
+ *   Find transit stops 500 m–5000 m away (skip nearby stops — no benefit
+ *   cycling 100 m when you could just walk). Plan ALL_MODES transit from each
+ *   stop, prepend the cycle leg. This lets the user cycle past their nearest
+ *   (bike-restricted) station to a deeper tube/bus stop further away.
  */
 async function findLockBikeJourneys(
   fromLat: number,
@@ -1022,68 +1068,96 @@ async function findLockBikeJourneys(
   const ALL_MODES =
     "tube,bus,national-rail,overground,elizabeth-line,dlr,walking,river-bus";
 
-  // All transit stops near origin — no bike-viability filter
-  const stopUrl =
-    `https://api.tfl.gov.uk/StopPoint` +
-    `?lat=${fromLat}&lon=${fromLon}` +
-    `&stopTypes=NaptanMetroStation,NaptanRailStation` +
-    `&radius=5000` +
-    `&modes=tube,overground,national-rail,elizabeth-line,dlr` +
-    `&returnLines=true`;
-
-  let stops: TflStopPoint[] = [];
-  try {
-    const res = await fetchWithTimeout(stopUrl);
-    if (res?.ok) {
-      const data = await res.json();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      stops = (data.stopPoints ?? []).map((s: any): TflStopPoint => ({
-        id: s.id ?? s.naptanId,
-        commonName: s.commonName,
-        lat: s.lat,
-        lon: s.lon,
-        modes: s.modes ?? [],
-        lines: s.lines ?? [],
-      }));
-    }
-  } catch { /* ignore */ }
-
-  if (stops.length === 0) return [];
-
-  // Sort by cycle distance from origin, take top 4 candidate stations
-  const candidates = stops
-    .map((stop) => ({
-      stop,
-      dist: Math.round(haversineMetres(fromLat, fromLon, stop.lat, stop.lon) * 1.4),
-    }))
-    .sort((a, b) => a.dist - b.dist)
-    .slice(0, 4);
-
-  // For each candidate, plan transit from that station → destination (ALL modes,
-  // no walking→cycling substitution since the bike stays at the lock stop).
-  const results = await Promise.all(
-    candidates.map(async ({ stop, dist }, idx) => {
-      const journeys = await fetchTflJourneys(
-        buildTflUrl(stop.lat, stop.lon, toLat, toLon, ALL_MODES, planningTime),
-        700 + idx * 10,
-        { substituteWalking: false },
-      );
-      return journeys.slice(0, 2).map((j) =>
-        prependCycleLeg(
-          j,
-          fromLabel,
-          stop.commonName,
-          dist,
-          fromLat,
-          fromLon,
-          stop.lat,
-          stop.lon,
-        )
-      );
-    })
+  // Strategy A: direct TfL planning — guaranteed to return something
+  const directPromise = fetchTflJourneys(
+    buildTflUrl(fromLat, fromLon, toLat, toLon, ALL_MODES, planningTime),
+    700,
+    { substituteWalking: false },
+  ).then((journeys) =>
+    journeys
+      .map(upgradeInitialWalkToCycle)
+      // Only keep journeys that actually involve cycling (have a cycle leg)
+      .filter((j) => j.legs.some((l) => l.mode === "cycle"))
   );
 
-  return results.flat();
+  // Strategy B: stop-based — targets stations 500 m–5000 m away for longer
+  // initial cycling legs that unlock better (currently bike-restricted) transit.
+  const stopPromise = (async (): Promise<Journey[]> => {
+    const stopUrl =
+      `https://api.tfl.gov.uk/StopPoint` +
+      `?lat=${fromLat}&lon=${fromLon}` +
+      `&stopTypes=NaptanMetroStation,NaptanRailStation` +
+      `&radius=5000` +
+      `&modes=tube,overground,national-rail,elizabeth-line,dlr` +
+      `&returnLines=true`;
+
+    let stops: TflStopPoint[] = [];
+    try {
+      const res = await fetchWithTimeout(stopUrl);
+      if (res?.ok) {
+        const data = await res.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        stops = (data.stopPoints ?? []).map((s: any): TflStopPoint => ({
+          id: s.id ?? s.naptanId,
+          commonName: s.commonName,
+          lat: s.lat,
+          lon: s.lon,
+          modes: s.modes ?? [],
+          lines: s.lines ?? [],
+        }));
+      }
+    } catch { /* silent — Strategy A covers the fallback */ }
+
+    if (stops.length === 0) return [];
+
+    // Focus on stops that are meaningfully further away (≥ 500 m road-est).
+    // Sorting closest-first ensures we still prefer the most reachable option.
+    const candidates = stops
+      .map((stop) => ({
+        stop,
+        dist: Math.round(haversineMetres(fromLat, fromLon, stop.lat, stop.lon) * 1.4),
+      }))
+      .filter((c) => c.dist >= 500)
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, 3);
+
+    if (candidates.length === 0) return [];
+
+    const results = await Promise.all(
+      candidates.map(async ({ stop, dist }, idx) => {
+        const journeys = await fetchTflJourneys(
+          buildTflUrl(stop.lat, stop.lon, toLat, toLon, ALL_MODES, planningTime),
+          720 + idx * 10,
+          { substituteWalking: false },
+        );
+        // Fix summary: no "+ cycle" at end (bike is locked, no cycling at destination)
+        return journeys.slice(0, 2).map((j) => {
+          const withCycle = prependCycleLeg(
+            j, fromLabel, stop.commonName, dist,
+            fromLat, fromLon, stop.lat, stop.lon,
+          );
+          const transitModes = [
+            ...new Set(
+              withCycle.legs
+                .map((l) => l.mode)
+                .filter((m) => m !== "cycle" && m !== "walking"),
+            ),
+          ];
+          return {
+            ...withCycle,
+            summary:
+              transitModes.length > 0
+                ? `Cycle + ${transitModes.join(" + ")}`
+                : "Cycle only",
+          };
+        });
+      })
+    );
+    return results.flat();
+  })();
+
+  const [directResults, stopResults] = await Promise.all([directPromise, stopPromise]);
+  return [...directResults, ...stopResults];
 }
 
 export async function planRoute(
