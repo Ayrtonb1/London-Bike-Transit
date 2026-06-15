@@ -285,7 +285,14 @@ async function tflStopSearch(query: string): Promise<Place[]> {
     const data = await res.json();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (data.matches ?? [])
-      .filter((s: any) => typeof s.lat === "number" && typeof s.lon === "number" && s.lat !== 0 && s.lon !== 0)
+      .filter((s: any) =>
+        typeof s.lat === "number" && typeof s.lon === "number" &&
+        // Strictly restrict to the London bounding box — TfL's search
+        // returns national rail stops from any UK city (e.g. "Manchester
+        // Victoria") which would break routing completely.
+        s.lat >= LONDON_LAT_MIN && s.lat <= LONDON_LAT_MAX &&
+        s.lon >= LONDON_LON_MIN && s.lon <= LONDON_LON_MAX
+      )
       .slice(0, 5)
       .map((s: any, i: number): Place => ({
         id: `tfl-${s.id}-${i}`,
