@@ -873,10 +873,14 @@ async function findMaxSingleTransitJourneys(
   });
 
   // For each top pair, plan transit station → station and wrap with cycling legs.
-  // Capped at 3 to keep mobile latency in check — the pairs are sorted by
-  // shortest total cycling distance, so the top 3 are the strongest candidates.
+  // Capped at 5: pairs are sorted by shortest total cycling distance, but "nearest"
+  // stops can share a line ID (e.g. all Overground services share "london-overground")
+  // while actually requiring a line change — meaning the top 1–3 pairs often fail the
+  // single-transit-leg filter. Extending to 5 ensures we reach pairs like
+  // H&I→Whitechapel (direct East London Overground) that are ranked lower by cycling
+  // distance but are genuinely single-leg services.
   const results = await Promise.all(
-    uniquePairs.slice(0, 3).map(async (pair, idx) => {
+    uniquePairs.slice(0, 5).map(async (pair, idx) => {
       const journeysToStop = await fetchTflJourneys(
         buildTflUrl(pair.origin.lat, pair.origin.lon, pair.dest.lat, pair.dest.lon, bikeFriendlyModes, planningTime),
         600 + idx * 10
@@ -1227,10 +1231,13 @@ export async function planRoute(
       })
     ).then((r) => r.flat()),
 
-    // 2b: cycle the first mile to a stop near origin, then transit
-    // (capped at 3 for the same wider-radius reason as 2a above).
+    // 2b: cycle the first mile to a stop near origin, then transit.
+    // Capped at 5 (not 3) because the closest viable stops near the origin
+    // may be on "wrong" Overground branches (e.g. Gospel Oak→Barking near N19)
+    // while the genuinely useful stop for the destination (e.g. H&I for East
+    // London Overground to Whitechapel) is the 4th or 5th stop by distance.
     Promise.all(
-      nearbyOriginStops.slice(0, 3).map(async (stop, idx) => {
+      nearbyOriginStops.slice(0, 5).map(async (stop, idx) => {
         const journeysFromStop = await fetchTflJourneys(
           buildTflUrl(stop.lat, stop.lon, toLat, toLon, SURFACE_BIKE_MODES, planningTime),
           400 + idx * 10
