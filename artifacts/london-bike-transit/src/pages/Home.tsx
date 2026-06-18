@@ -67,7 +67,7 @@ export default function Home() {
 
   const { data: routeData, isLoading: isRouting } = useQuery({
     queryKey: [
-      "plan-route",
+      "plan-route-v2",
       fromPlace?.lat, fromPlace?.lon,
       toPlace?.lat, toPlace?.lon,
       timeMode, planDate, planTime,

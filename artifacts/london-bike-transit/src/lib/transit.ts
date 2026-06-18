@@ -1,5 +1,17 @@
 import { isJourneyViableNow, isLegViableNow, getPeakStatus } from "./bikeRules";
 
+/**
+ * Base URL for TfL API calls.
+ * Browser: proxy through /api/tfl (avoids CORS restrictions on Replit/web).
+ * Capacitor iOS native: call TfL directly (no CORS restriction in WKWebView).
+ */
+function _getTflBase(): string {
+  if (typeof window === "undefined") return "https://api.tfl.gov.uk";
+  if (window.location.protocol === "capacitor:") return "https://api.tfl.gov.uk";
+  return `${window.location.origin}/api/tfl`;
+}
+const TFL_BASE = _getTflBase();
+
 export interface PlanningTime {
   mode: "now" | "depart" | "arrive";
   date: string; // YYYYMMDD
@@ -199,7 +211,7 @@ const LONDON_VIEWBOX = "-0.5103,51.2868,0.3340,51.6919";
 
 async function tflStopSearch(query: string): Promise<Place[]> {
   const url =
-    `https://api.tfl.gov.uk/StopPoint/Search/${encodeURIComponent(query)}` +
+    `${TFL_BASE}/StopPoint/Search/${encodeURIComponent(query)}` +
     `?modes=tube,overground,dlr,elizabeth-line,national-rail,bus&maxResults=5`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
@@ -597,7 +609,7 @@ function buildTflUrl(
   planningTime?: PlanningTime
 ): string {
   const url = new URL(
-    `https://api.tfl.gov.uk/Journey/JourneyResults/${fromLat}%2C${fromLon}/to/${toLat}%2C${toLon}`
+    `${TFL_BASE}/Journey/JourneyResults/${fromLat}%2C${fromLon}/to/${toLat}%2C${toLon}`
   );
   url.searchParams.set("mode", modes);
   url.searchParams.set("walkingSpeed", "fast");
@@ -681,7 +693,7 @@ export async function fetchCyclePolyline(
 ): Promise<[number, number][] | null> {
   try {
     const url = new URL(
-      `https://api.tfl.gov.uk/Journey/JourneyResults/${fromLat}%2C${fromLon}/to/${toLat}%2C${toLon}`,
+      `${TFL_BASE}/Journey/JourneyResults/${fromLat}%2C${fromLon}/to/${toLat}%2C${toLon}`,
     );
     url.searchParams.set("mode", "cycle");
 
@@ -732,7 +744,7 @@ async function findNearbyViableStops(
     : "tube,overground,elizabeth-line,dlr,national-rail";
 
   const url =
-    `https://api.tfl.gov.uk/StopPoint` +
+    `${TFL_BASE}/StopPoint` +
     `?lat=${lat}&lon=${lon}` +
     `&stopTypes=NaptanMetroStation,NaptanRailStation` +
     `&radius=${radiusMetres}` +
@@ -1032,10 +1044,10 @@ async function findLockBikeJourneys(
   // initial cycling legs that unlock better (currently bike-restricted) transit.
   const stopPromise = (async (): Promise<Journey[]> => {
     const stopUrl =
-      `https://api.tfl.gov.uk/StopPoint` +
+      `${TFL_BASE}/StopPoint` +
       `?lat=${fromLat}&lon=${fromLon}` +
       `&stopTypes=NaptanMetroStation,NaptanRailStation` +
-      `&radius=5000` +
+      `&radius=3000` +
       `&modes=tube,overground,national-rail,elizabeth-line,dlr` +
       `&returnLines=true`;
 
@@ -1182,10 +1194,14 @@ export async function planRoute(
   // We synthesise a cycle-only fallback ourselves further down, so we no longer
   // ask TfL for a dedicated cycle,walking journey — that call was pure latency
   // on the critical path with no journeys we couldn't already produce.
-  // 5000m radius ≈ 20-min cycle, giving longer bike legs at both ends.
+  // 3000m radius ≈ max TfL will reliably serve; H&I at 3.7km is found instead
+  // via the direct SURFACE_BIKE_MODES plan below which forces TfL to route on
+  // surface-only transit (Overground/NR/DLR/Elizabeth) and naturally picks up
+  // longer walking legs that buildJourney converts to cycling legs.
   const [
     allResults,
     bikeFriendlyResults,
+    surfaceResults,
     nearbyDestStops,
     nearbyOriginStops,
   ] = await Promise.all([
@@ -1193,12 +1209,17 @@ export async function planRoute(
     fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, ALL_MODES, planningTime), 0),
     // Bike-friendly routing (no bus; TfL adds walks → we convert to cycling)
     fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, BIKE_FRIENDLY_MODES, planningTime), 100),
-    // Viable stops near DESTINATION (for "transit then final-cycle" appending)
-    findNearbyViableStops(toLat, toLon, 5000, isPeak, checkDate),
-    // Viable stops near ORIGIN (for "initial-cycle then transit" prepending)
-    findNearbyViableStops(fromLat, fromLon, 5000, isPeak, checkDate),
+    // Surface-only routing (no tube): forces TfL to use Overground / NR / DLR.
+    // Picks up routes like cycle→Overground→cycle that require a longer initial
+    // cycling leg (e.g. N19 → H&I for the Windrush line) that the radius-capped
+    // StopPoint search would never discover.
+    fetchTflJourneys(buildTflUrl(fromLat, fromLon, toLat, toLon, SURFACE_BIKE_MODES, planningTime), 0),
+    // Viable stops near DESTINATION (for "transit then final-cycle" appending).
+    // Radius capped at 3000m — TfL's StopPoint API reliably fails above this.
+    findNearbyViableStops(toLat, toLon, 3000, isPeak, checkDate),
+    // Viable stops near ORIGIN (for "initial-cycle then transit" prepending).
+    findNearbyViableStops(fromLat, fromLon, 3000, isPeak, checkDate),
   ]);
-  const cycleResults: Journey[] = [];
 
   // ── Stage 2: all stop-dependent journey building, in one parallel batch.
   // findMaxSingleTransitJourneys, Phase 2a, and Phase 2b all need the stops
@@ -1256,7 +1277,7 @@ export async function planRoute(
   const allCandidates = [
     ...allResults,
     ...bikeFriendlyResults,
-    ...cycleResults,
+    ...surfaceResults,
     ...viaDestStopJourneys,
     ...viaOriginStopJourneys,
     ...singleTransitJourneys,
