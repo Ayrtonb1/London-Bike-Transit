@@ -823,12 +823,16 @@ async function findMaxSingleTransitJourneys(
   const isPeakNow = getPeakStatus(checkDate).isPeak;
 
   // Reuse stops fetched by Phase 1 if available; only fetch if not provided.
-  const [originStops, destStops] = preFetchedOriginStops && preFetchedDestStops
-    ? [preFetchedOriginStops, preFetchedDestStops]
-    : await Promise.all([
-        findNearbyViableStops(fromLat, fromLon, 3000, isPeakNow, checkDate),
-        findNearbyViableStops(toLat, toLon, 3000, isPeakNow, checkDate),
-      ]);
+  // Must check .length > 0 — empty arrays are truthy, so a timed-out pre-fetch
+  // that returns [] would silently skip the fallback and then return nothing.
+  const [originStops, destStops] =
+    preFetchedOriginStops && preFetchedOriginStops.length > 0 &&
+    preFetchedDestStops   && preFetchedDestStops.length > 0
+      ? [preFetchedOriginStops, preFetchedDestStops]
+      : await Promise.all([
+          findNearbyViableStops(fromLat, fromLon, 3000, isPeakNow, checkDate),
+          findNearbyViableStops(toLat, toLon, 3000, isPeakNow, checkDate),
+        ]);
 
   if (originStops.length === 0 || destStops.length === 0) return [];
 
@@ -1227,6 +1231,22 @@ export async function planRoute(
   // eliminates the previous sequential gap between findMaxSingle and Phase 2.
   // Phase 2 uses SURFACE_BIKE_MODES (no tube) so TfL returns Overground/NR/DLR
   // routes that will actually pass viability checks rather than deep-tube routes.
+
+  // Phase 2b stop ordering: TfL's StopPoint radius search sorts by distance,
+  // so dense tube stations crowd out surface-transit stops that are further
+  // away but uniquely useful (e.g. H&I Windrush line at ~3 km from N19 sits at
+  // position 21/23). Re-sort so Overground / DLR / Elizabeth stops come first,
+  // then NR/tube, and raise the cap to 10 so all surface-transit stops are
+  // always covered.
+  const surfaceFirstOriginStops = [
+    ...nearbyOriginStops.filter(s =>
+      s.modes.some(m => ["overground", "elizabeth-line", "dlr"].includes(m))
+    ),
+    ...nearbyOriginStops.filter(s =>
+      !s.modes.some(m => ["overground", "elizabeth-line", "dlr"].includes(m))
+    ),
+  ];
+
   const [singleTransitJourneys, viaDestStopJourneys, viaOriginStopJourneys] = await Promise.all([
     // Best "cycle → 1 transit leg → cycle" (passes pre-fetched stops to skip
     // the duplicate StopPoint API calls it would otherwise make).
@@ -1236,7 +1256,6 @@ export async function planRoute(
     ),
 
     // 2a: transit to a stop near destination, then cycle the last mile.
-    // Capped at 3 to widen the candidate pool with the larger 5000m radius.
     Promise.all(
       nearbyDestStops.slice(0, 3).map(async (stop, idx) => {
         const journeysToStop = await fetchTflJourneys(
@@ -1252,13 +1271,9 @@ export async function planRoute(
       })
     ).then((r) => r.flat()),
 
-    // 2b: cycle the first mile to a stop near origin, then transit.
-    // Capped at 5 (not 3) because the closest viable stops near the origin
-    // may be on "wrong" Overground branches (e.g. Gospel Oak→Barking near N19)
-    // while the genuinely useful stop for the destination (e.g. H&I for East
-    // London Overground to Whitechapel) is the 4th or 5th stop by distance.
+    // 2b: cycle to a stop near origin (surface-transit stops first), then transit.
     Promise.all(
-      nearbyOriginStops.slice(0, 5).map(async (stop, idx) => {
+      surfaceFirstOriginStops.slice(0, 10).map(async (stop, idx) => {
         const journeysFromStop = await fetchTflJourneys(
           buildTflUrl(stop.lat, stop.lon, toLat, toLon, SURFACE_BIKE_MODES, planningTime),
           400 + idx * 10
