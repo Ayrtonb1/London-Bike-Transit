@@ -1,4 +1,4 @@
-import { Bike, Train, Bus, TrainFront, Zap, AlertTriangle, CheckCircle2, XCircle, Info } from "lucide-react";
+import { Bike, Train, Bus, TrainFront, Zap, AlertTriangle, CheckCircle2, XCircle, Info, Footprints } from "lucide-react";
 import type { Journey } from "@/lib/transit";
 import { getBikeRestriction } from "@/lib/bikeRules";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,7 @@ const TUBE_COLORS: Record<string, string> = {
 function getModeIcon(mode: string) {
   switch (mode) {
     case "cycle": return <Bike className="w-3.5 h-3.5" />;
+    case "walking": return <Footprints className="w-3.5 h-3.5" />;
     case "tube":
     case "overground":
     case "elizabeth-line":
