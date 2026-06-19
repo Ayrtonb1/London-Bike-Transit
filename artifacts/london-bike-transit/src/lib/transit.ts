@@ -556,12 +556,17 @@ function journeySignature(j: Journey): string {
 }
 
 function deduplicateJourneys(journeys: Journey[]): Journey[] {
-  const seen = new Map<string, number>(); // sig → best total duration seen
-  return journeys.filter((j) => {
+  // Sort fastest-first so the best (shortest) variant of each transit-line
+  // sequence wins its slot. The final ranking by journeyScore (with change
+  // penalty) happens in planRoute after dedup.
+  const sorted = [...journeys].sort(
+    (a, b) => a.totalDurationMinutes - b.totalDurationMinutes
+  );
+  const seen = new Set<string>();
+  return sorted.filter((j) => {
     const sig = journeySignature(j);
-    const prev = seen.get(sig);
-    if (prev !== undefined && prev <= j.totalDurationMinutes) return false;
-    seen.set(sig, j.totalDurationMinutes);
+    if (seen.has(sig)) return false;
+    seen.add(sig);
     return true;
   });
 }
