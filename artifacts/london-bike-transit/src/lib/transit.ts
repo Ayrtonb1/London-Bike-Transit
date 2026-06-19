@@ -662,8 +662,17 @@ async function fetchTflJourneys(
   offset: number,
   opts: { substituteWalking?: boolean } = {},
 ): Promise<Journey[]> {
-  try {
+  const attempt = async (): Promise<Response | null> => {
     const res = await fetchWithTimeout(url);
+    // Retry once on 429 (TfL rate limit) after a short back-off
+    if (res?.status === 429) {
+      await new Promise((r) => setTimeout(r, 1500));
+      return fetchWithTimeout(url);
+    }
+    return res;
+  };
+  try {
+    const res = await attempt();
     if (!res || !res.ok) return [];
     const data = await res.json();
     return (data.journeys ?? [] as TflJourney[]).map(
@@ -1283,7 +1292,7 @@ export async function planRoute(
 
     // 2b: cycle to a stop near origin (surface-transit stops first), then transit.
     Promise.all(
-      surfaceFirstOriginStops.slice(0, 10).map(async (stop, idx) => {
+      surfaceFirstOriginStops.slice(0, 5).map(async (stop, idx) => {
         const journeysFromStop = await fetchTflJourneys(
           buildTflUrl(stop.lat, stop.lon, toLat, toLon, SURFACE_BIKE_MODES, planningTime),
           400 + idx * 10
