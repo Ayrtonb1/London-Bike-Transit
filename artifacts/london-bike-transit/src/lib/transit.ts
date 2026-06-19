@@ -1311,6 +1311,17 @@ export async function planRoute(
   const totalCount = allCandidates.length;
   const viable = allCandidates.filter((j) => isJourneyViableNow(j.legs, checkDate));
 
+  // ── Cap at 2 transit legs: routes with 3+ changes are complex enough that
+  // users are better off just cycling. Fall back to the full viable set only
+  // if the cap would leave nothing but cycle-only (so there's always at least
+  // one transit option when any exists).
+  const transitLegCount = (j: Journey) =>
+    j.legs.filter((l) => l.mode !== "cycle" && l.mode !== "walking").length;
+  const withinCap = viable.filter((j) => transitLegCount(j) <= 2);
+  const cappedViable = withinCap.some((j) => transitLegCount(j) > 0)
+    ? withinCap
+    : viable;
+
   // ── Scoring: penalise extra transit changes so simpler routes rank higher
   // when journey times are close. Each change above 1 costs ~8 minutes of
   // convenience penalty — enough to prefer a direct service over a 1-change
@@ -1322,7 +1333,7 @@ export async function planRoute(
     return j.totalDurationMinutes + changesPenalty;
   }
 
-  const deduped = deduplicateJourneys(viable).sort(
+  const deduped = deduplicateJourneys(cappedViable).sort(
     (a, b) => journeyScore(a) - journeyScore(b)
   );
 
