@@ -545,8 +545,13 @@ function journeySignature(j: Journey): string {
     (l) => l.mode !== "cycle" && l.mode !== "walking"
   );
   if (transitLegs.length === 0) return "__cycle_only__";
+  // Key on the sequence of lines only — not the specific boarding/alighting stops.
+  // This collapses "Windrush (board H&I, alight Shadwell)" and
+  // "Windrush (board H&I, alight Whitechapel)" into one group, keeping the
+  // fastest variant. Genuinely different routes (different line combinations
+  // or ordering) still get distinct signatures.
   return transitLegs
-    .map((l) => `${l.mode}:${l.lineId ?? ""}:${l.fromName}→${l.toName}`)
+    .map((l) => `${l.mode}:${l.lineId ?? l.mode}`)
     .join("|");
 }
 
