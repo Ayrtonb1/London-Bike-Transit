@@ -46,7 +46,7 @@ export default function Screenshot2() {
         backdropFilter: "blur(10px)",
       }}>
         <span style={{ fontSize: 36 }}>⚡</span>
-        <span style={{ fontSize: 34, fontWeight: 700, color: "white" }}>Up to 12 min faster than cycling alone</span>
+        <span style={{ fontSize: 34, fontWeight: 700, color: "white" }}>Up to 26 min faster than cycling alone</span>
       </div>
 
       {/* Phone mockup */}
@@ -153,13 +153,73 @@ export default function Screenshot2() {
                 <div style={{ fontSize: 44, fontWeight: 800, color: "#1c1c1e", lineHeight: 1 }}>47<span style={{ fontSize: 26, fontWeight: 500, color: "#8e8e93" }}> min</span></div>
                 <div style={{ fontSize: 19, color: "#8e8e93", marginTop: 4 }}>09:12 → 09:59</div>
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <div style={{ width: 36, height: 36, background: "#22c55e", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🚲</div>
-                <div style={{ width: 16, height: 2, background: "#e5e7eb", alignSelf: "center" }} />
+                <div style={{ width: 16, height: 2, background: "#e5e7eb" }} />
                 <div style={{ width: 36, height: 36, background: "#dc2626", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🚌</div>
               </div>
             </div>
           </div>
+
+          {/* Journey card 4 */}
+          <div style={{
+            background: "white", borderRadius: 20, padding: "20px 28px",
+            marginTop: 14, border: "1.5px solid rgba(0,0,0,0.07)",
+            boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 44, fontWeight: 800, color: "#1c1c1e", lineHeight: 1 }}>52<span style={{ fontSize: 26, fontWeight: 500, color: "#8e8e93" }}> min</span></div>
+                <div style={{ fontSize: 19, color: "#8e8e93", marginTop: 4 }}>09:12 → 10:04</div>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ width: 36, height: 36, background: "#22c55e", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🚲</div>
+                <div style={{ width: 16, height: 2, background: "#e5e7eb" }} />
+                <div style={{ width: 36, height: 36, background: "#0ea5e9", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🚂</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Lock-bike toggle row */}
+          <div style={{
+            marginTop: 18,
+            background: "#f0fdf4", borderRadius: 20, padding: "20px 24px",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            border: "1.5px solid #bbf7d0",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <span style={{ fontSize: 26 }}>🔒</span>
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#166534" }}>Lock-bike mode</div>
+                <div style={{ fontSize: 18, color: "#4ade80" }}>Transit-only after locking up</div>
+              </div>
+            </div>
+            <div style={{
+              width: 60, height: 32, background: "#22c55e", borderRadius: 16,
+              position: "relative",
+            }}>
+              <div style={{ position: "absolute", right: 3, top: 3, width: 26, height: 26, background: "white", borderRadius: "50%" }} />
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom tab bar */}
+        <div style={{
+          position: "absolute", bottom: 0, left: 0, right: 0,
+          background: "white", borderTop: "1px solid #e5e7eb",
+          display: "flex", justifyContent: "space-around", alignItems: "center",
+          padding: "16px 0 24px",
+        }}>
+          {[
+            { icon: "🗺️", label: "Plan", active: false },
+            { icon: "📍", label: "Routes", active: true },
+            { icon: "🗂️", label: "History", active: false },
+          ].map(({ icon, label, active }, i) => (
+            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 28 }}>{icon}</span>
+              <span style={{ fontSize: 20, fontWeight: active ? 700 : 500, color: active ? "#22c55e" : "#8e8e93" }}>{label}</span>
+            </div>
+          ))}
         </div>
       </div>
 
