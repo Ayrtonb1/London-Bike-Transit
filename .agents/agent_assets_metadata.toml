@@ -5,16 +5,16 @@ generated = []
 id = "2xQCMqlOD1u79gvrV-JLU"
 uri = "file://screenshots/navelo-screenshot-1.jpg"
 type = "image"
-title = "Screenshot 1 — Plan smarter journeys"
+title = "Screenshot 1 — Plan smarter journeys (1284×2778)"
 
 [[outputs]]
 id = "_NsLIwZyUsecfC75MzdPJ"
 uri = "file://screenshots/navelo-screenshot-2.jpg"
 type = "image"
-title = "Screenshot 2 — Cycle, then ride (updated)"
+title = "Screenshot 2 — Cycle, then ride (1284×2778)"
 
 [[outputs]]
 id = "WpYirDrU73grZke4lk_oW"
 uri = "file://screenshots/navelo-screenshot-3.jpg"
 type = "image"
-title = "Screenshot 3 — See your whole route (updated map)"
+title = "Screenshot 3 — See your whole route (1284×2778)"

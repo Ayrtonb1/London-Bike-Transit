@@ -2,8 +2,8 @@ export default function Screenshot2() {
   return (
     <div
       style={{
-        width: 1290,
-        height: 2796,
+        width: 1284,
+        height: 2778,
         background: "linear-gradient(160deg, #145e2a 0%, #1a8a3a 35%, #16a34a 65%, #178c40 100%)",
         fontFamily: "-apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif",
         display: "flex",
