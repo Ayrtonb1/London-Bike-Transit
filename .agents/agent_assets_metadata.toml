@@ -1,0 +1,20 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "2xQCMqlOD1u79gvrV-JLU"
+uri = "file://screenshots/navelo-screenshot-1.jpg"
+type = "image"
+title = "Screenshot 1 — Plan smarter journeys"
+
+[[outputs]]
+id = "_NsLIwZyUsecfC75MzdPJ"
+uri = "file://screenshots/navelo-screenshot-2.jpg"
+type = "image"
+title = "Screenshot 2 — Cycle, then ride"
+
+[[outputs]]
+id = "WpYirDrU73grZke4lk_oW"
+uri = "file://screenshots/navelo-screenshot-3.jpg"
+type = "image"
+title = "Screenshot 3 — See your whole route"
