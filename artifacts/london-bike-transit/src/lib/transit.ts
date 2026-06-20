@@ -406,14 +406,22 @@ function buildJourney(
   const modes = [...new Set(legs.map((l) => l.mode).filter((m) => m !== "cycle"))];
   const summary = modes.length ? `Cycle + ${modes.join(" + ")}` : "Cycle only";
 
+  // Recompute arrivalTime from the recalculated total duration so it matches
+  // the displayed "X min" figure (TfL's raw arrivalDateTime uses walking speeds
+  // which differ once we substitute walking legs with cycling).
+  const depIso = journey.startDateTime;
+  const arrIso = depIso
+    ? new Date(new Date(depIso).getTime() + totalDuration * 60_000).toISOString()
+    : journey.arrivalDateTime;
+
   return {
     id: `journey-${jIdx}`,
     totalDurationMinutes: totalDuration,
     originalDurationMinutes: originalDuration,
     cyclingDurationMinutes: cyclingDuration,
     legs: mergeConsecutiveCycleLegs(legs),
-    departureTime: journey.startDateTime,
-    arrivalTime: journey.arrivalDateTime,
+    departureTime: depIso,
+    arrivalTime: arrIso,
     summary,
     farePence: journey.fare?.totalCost ?? undefined,
   };
@@ -488,12 +496,20 @@ function prependCycleLeg(
     transitModes.length > 0
       ? `Cycle + ${transitModes.join(" + ")} + cycle`
       : "Cycle only";
+
+  // User must leave earlier to cycle to the stop — shift departure back.
+  // Transit schedule (and therefore arrival) is unchanged.
+  const shiftedDep = journey.departureTime
+    ? new Date(new Date(journey.departureTime).getTime() - durationMinutes * 60_000).toISOString()
+    : undefined;
+
   return {
     ...journey,
     totalDurationMinutes: journey.totalDurationMinutes + durationMinutes,
     cyclingDurationMinutes: journey.cyclingDurationMinutes + durationMinutes,
     legs: allLegs,
     summary,
+    departureTime: shiftedDep,
   };
 }
 
@@ -1017,11 +1033,18 @@ function upgradeInitialWalkToCycle(j: Journey): Journey {
       ? `Cycle + ${transitModes.join(" + ")}`
       : "Cycle only";
 
+  const newTotal = j.totalDurationMinutes - timeSaved;
+  // Recompute arrival — cycling the first leg saves time vs TfL's walking estimate.
+  const newArr = j.departureTime
+    ? new Date(new Date(j.departureTime).getTime() + newTotal * 60_000).toISOString()
+    : j.arrivalTime;
+
   return {
     ...j,
     legs: newLegs,
-    totalDurationMinutes: j.totalDurationMinutes - timeSaved,
+    totalDurationMinutes: newTotal,
     cyclingDurationMinutes: j.cyclingDurationMinutes + dur,
+    arrivalTime: newArr,
     summary,
   };
 }
