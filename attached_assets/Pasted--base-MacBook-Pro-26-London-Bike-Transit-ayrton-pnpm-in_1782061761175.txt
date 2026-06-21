@@ -1,0 +1,47 @@
+(base) MacBook-Pro-26:London-Bike-Transit ayrton$ pnpm install
+cd artifacts/london-bike-transit
+pnpm run android:sync
+Scope: all 9 workspace projects
+Lockfile is up to date, resolution step is skipped
+Packages: +830
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Downloading maplibre-gl@5.23.0: 8.79 MB/8.79 MB, done
+Downloading react-icons@5.6.0: 22.42 MB/22.42 MB, done
+Progress: resolved 830, reused 0, downloaded 830, added 830, done
+node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild: Running postinstall scrinode_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild: Running postinstall script, done in 3.8s
+
+devDependencies:
++ @rollup/rollup-darwin-x64 4.62.2
++ prettier 3.8.1
++ typescript 5.9.3
+
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_use…
+└─ Done in 29ms
+Done in 1m 2.1s using pnpm v10.33.1
+(base) MacBook-Pro-26:London-Bike-Transit ayrton$ cd artifacts/london-bike-transit
+(base) MacBook-Pro-26:london-bike-transit ayrton$ pnpm run android:sync
+
+> @workspace/london-bike-transit@0.0.0 android:sync /Users/ayrton/London-Bike-Transit/artifacts/london-bike-transit
+> pnpm run build:android && cap sync android
+
+
+> @workspace/london-bike-transit@0.0.0 build:android /Users/ayrton/London-Bike-Transit/artifacts/london-bike-transit
+> BUILD_TARGET=android BASE_PATH=/ vite build --config vite.config.ts
+
+failed to load config from /Users/ayrton/London-Bike-Transit/artifacts/london-bike-transit/vite.config.ts
+error during build:
+Error: Cannot find module '../lightningcss.darwin-x64.node'
+Require stack:
+- /Users/ayrton/London-Bike-Transit/node_modules/.pnpm/lightningcss@1.31.1/node_modules/lightningcss/node/index.js
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+    at Function._load (node:internal/modules/cjs/loader:1192:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+    at Module.require (node:internal/modules/cjs/loader:1463:12)
+    at require (node:internal/modules/helpers:147:16)
+    at Object.<anonymous> (/Users/ayrton/London-Bike-Transit/node_modules/.pnpm/lightningcss@1.31.1/node_modules/lightningcss/node/index.js:22:22)
+    at Module._compile (node:internal/modules/cjs/loader:1706:14)
+ ELIFECYCLE  Command failed with exit code 1.
+ ELIFECYCLE  Command failed with exit code 1.

@@ -6,13 +6,15 @@ import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { VitePWA } from "vite-plugin-pwa";
 
 // PORT is only required for the dev / preview server (Replit-hosted web).
-// The iOS Capacitor build never starts a server — it just bundles assets —
-// so PORT is optional in that codepath.
+// Native Capacitor builds (iOS/Android) never start a server — they just
+// bundle assets — so PORT is optional in those codepaths.
 const isIosBuild = process.env.BUILD_TARGET === "ios";
+const isAndroidBuild = process.env.BUILD_TARGET === "android";
+const isNativeBuild = isIosBuild || isAndroidBuild;
 
 const rawPort = process.env.PORT;
 
-if (!rawPort && !isIosBuild) {
+if (!rawPort && !isNativeBuild) {
   throw new Error(
     "PORT environment variable is required but was not provided.",
   );
@@ -28,7 +30,7 @@ if (rawPort && (Number.isNaN(port) || port <= 0)) {
 // is served from the root of the bundled WKWebView (capacitor://localhost/)
 // rather than the Replit hosted path prefix. The web build keeps using
 // BASE_PATH so it continues to work behind the platform's path-routed proxy.
-const basePath = isIosBuild ? "/" : process.env.BASE_PATH;
+const basePath = isNativeBuild ? "/" : process.env.BASE_PATH;
 
 if (!basePath) {
   throw new Error(
@@ -45,7 +47,7 @@ export default defineConfig({
     // Skip the PWA service worker for the iOS build — Capacitor ships the
     // bundled assets natively, and a SW would aggressively cache them in a
     // way that conflicts with native app updates pushed via the App Store.
-    ...(isIosBuild ? [] : [VitePWA({
+    ...(isNativeBuild ? [] : [VitePWA({
       registerType: "autoUpdate",
       injectRegister: "auto",
       manifest: {
