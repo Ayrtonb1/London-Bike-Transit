@@ -1,0 +1,41 @@
+pnpm run android:sync
+Scope: all 9 workspace projects
+Lockfile is up to date, resolution step is skipped
+Packages: +831
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 831, reused 831, downloaded 0, added 831, done
+
+devDependencies:
++ @rollup/rollup-darwin-x64 4.62.2
++ lightningcss-darwin-x64 1.32.0
++ prettier 3.8.1
++ typescript 5.9.3
+
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_use…
+└─ Done in 53ms
+Done in 34.5s using pnpm v10.33.1
+(base) MacBook-Pro-26:London-Bike-Transit ayrton$ cd artifacts/london-bike-transit
+(base) MacBook-Pro-26:london-bike-transit ayrton$ pnpm run android:sync
+
+> @workspace/london-bike-transit@0.0.0 android:sync /Users/ayrton/London-Bike-Transit/artifacts/london-bike-transit
+> pnpm run build:android && cap sync android
+
+
+> @workspace/london-bike-transit@0.0.0 build:android /Users/ayrton/London-Bike-Transit/artifacts/london-bike-transit
+> BUILD_TARGET=android BASE_PATH=/ vite build --config vite.config.ts
+
+failed to load config from /Users/ayrton/London-Bike-Transit/artifacts/london-bike-transit/vite.config.ts
+error during build:
+Error: Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.
+    at Object.<anonymous> (/Users/ayrton/London-Bike-Transit/node_modules/.pnpm/@tailwindcss+oxide@4.2.1/node_modules/@tailwindcss/oxide/index.js:559:11)
+    at Module._compile (node:internal/modules/cjs/loader:1706:14)
+    at Object..js (node:internal/modules/cjs/loader:1839:10)
+    at Module.load (node:internal/modules/cjs/loader:1441:32)
+    at Function._load (node:internal/modules/cjs/loader:1263:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+    at cjsLoader (node:internal/modules/esm/translators:268:5)
+    at ModuleWrap.<anonymous> (node:internal/modules/esm/translators:202:7)
+    at ModuleJob.run (node:internal/modules/esm/module_job:345:25)
+ ELIFECYCLE  Command failed with exit code 1.
+ ELIFECYCLE  Command failed with exit code 1.

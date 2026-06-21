@@ -158,8 +158,8 @@ importers:
   .:
     devDependencies:
       '@tailwindcss/oxide-darwin-x64':
-        specifier: ^4.3.1
-        version: 4.3.1
+        specifier: 4.2.1
+        version: 4.2.1
       lightningcss-darwin-x64:
         specifier: ^1.32.0
         version: 1.32.0
@@ -2184,8 +2184,8 @@ packages:
   '@tailwindcss/node@4.2.1':
     resolution: {integrity: sha512-jlx6sLk4EOwO6hHe1oCGm1Q4AN/s0rSrTTPBGPM0/RQ6Uylwq17FuU8IeJJKEjtc6K6O07zsvP+gDO6MMWo7pg==}
 
-  '@tailwindcss/oxide-darwin-x64@4.3.1':
-    resolution: {integrity: sha512-Cf7abu0WVgbhU7ANgPUnSAvm7nCvMweusHb8FnaHlLfv/Caq4GYaEZg7ZImzzmjx4lIAfuS8q+eLIS7A7IzxIg==}
+  '@tailwindcss/oxide-darwin-x64@4.2.1':
+    resolution: {integrity: sha512-/f/ozlaXGY6QLbpvd/kFTro2l18f7dHKpB+ieXz+Cijl4Mt9AI2rTrpq7V+t04nK+j9XBQHnSMdeQRhbGyt6fw==}
     engines: {node: '>= 20'}
     cpu: [x64]
     os: [darwin]
@@ -6550,7 +6550,7 @@ snapshots:
       source-map-js: 1.2.1
       tailwindcss: 4.2.1
 
-  '@tailwindcss/oxide-darwin-x64@4.3.1': {}
+  '@tailwindcss/oxide-darwin-x64@4.2.1': {}
 
   '@tailwindcss/oxide-linux-x64-gnu@4.2.1':
     optional: true
