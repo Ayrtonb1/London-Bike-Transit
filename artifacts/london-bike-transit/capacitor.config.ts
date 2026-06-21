@@ -4,20 +4,22 @@ const config: CapacitorConfig = {
   appId: "com.ayrton.navelo",
   appName: "Navelo",
   // The web app is built into dist/public by Vite. `npx cap sync` copies this
-  // folder into the iOS app bundle so it ships offline as the app shell.
+  // folder into the native app bundle so it ships offline as the app shell.
   webDir: "dist/public",
   ios: {
     contentInset: "always",
     backgroundColor: "#ffffff",
-    // Limits scroll bounce inside the WKWebView so the map and journey list
-    // feel like a native screen rather than a webpage.
     scrollEnabled: true,
+  },
+  android: {
+    backgroundColor: "#ffffff",
   },
   plugins: {
     SplashScreen: {
       launchShowDuration: 800,
       backgroundColor: "#ffffff",
       iosSpinnerStyle: "small",
+      androidSpinnerStyle: "small",
       showSpinner: false,
     },
     StatusBar: {
