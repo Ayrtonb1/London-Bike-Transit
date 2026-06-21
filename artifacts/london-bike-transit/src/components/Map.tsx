@@ -152,13 +152,28 @@ export function Map({ fromPlace, toPlace, selectedJourney, isVisible = true }: M
           // are intentionally skipped — they follow tunnel geometry which
           // produces visual spaghetti, esp. on the Elizabeth line.
           // NB: leg.polyline is [[lat, lon], ...]; GeoJSON needs [lon, lat].
-          const coordinates: [number, number][] =
-            isCycle && leg.polyline && leg.polyline.length >= 2
-              ? leg.polyline.map(([lat, lon]) => [lon, lat])
-              : [
-                  [leg.fromLon!, leg.fromLat],
-                  [leg.toLon!, leg.toLat],
-                ];
+          //
+          // When a cycle polyline was fetched for only part of the leg (e.g.
+          // the leg was later merged with a walk-to-destination that has no
+          // polyline), the raw polyline stops at the intermediate station
+          // rather than the final destination. We always append the leg's
+          // actual destination so the line reaches the right endpoint.
+          let coordinates: [number, number][];
+          if (isCycle && leg.polyline && leg.polyline.length >= 2) {
+            coordinates = leg.polyline.map(([lat, lon]) => [lon, lat]);
+            // Ensure the line reaches the true destination (not just where
+            // the polyline data ends, which may be a midpoint station).
+            const dest: [number, number] = [leg.toLon!, leg.toLat!];
+            const last = coordinates[coordinates.length - 1];
+            if (Math.abs(last[0] - dest[0]) > 0.0001 || Math.abs(last[1] - dest[1]) > 0.0001) {
+              coordinates = [...coordinates, dest];
+            }
+          } else {
+            coordinates = [
+              [leg.fromLon!, leg.fromLat!],
+              [leg.toLon!, leg.toLat!],
+            ];
+          }
 
           map.addSource(sourceId, {
             type: "geojson",

@@ -85,7 +85,7 @@ export interface RouteResponse {
   cycleOnlyMinutes: number;
 }
 
-const CYCLING_SPEED_M_PER_MIN = 250; // ~15 km/h
+const CYCLING_SPEED_M_PER_MIN = 280; // ~16.8 km/h — matches Google Maps urban cycling
 
 function cycleDuration(distanceMeters: number): number {
   return Math.max(1, Math.round(distanceMeters / CYCLING_SPEED_M_PER_MIN));
