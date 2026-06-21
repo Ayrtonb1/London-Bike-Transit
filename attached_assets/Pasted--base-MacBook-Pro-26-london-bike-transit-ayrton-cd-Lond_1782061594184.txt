@@ -1,0 +1,53 @@
+(base) MacBook-Pro-26:london-bike-transit ayrton$ cd ~/London-Bike-Transit
+(base) MacBook-Pro-26:London-Bike-Transit ayrton$ npm install @rollup/rollup-darwin-x64
+⠹
+npm error Cannot read properties of null (reading 'name')
+npm notice
+npm notice New major version of npm available! 10.9.3 -> 11.17.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.17.0
+npm notice To update run: npm install -g npm@11.17.0
+npm notice
+npm error A complete log of this run can be found in: /Users/ayrton/.npm/_logs/2026-06-21T17_02_21_118Z-debug-0.log
+(base) MacBook-Pro-26:London-Bike-Transit ayrton$ 
+(base) MacBook-Pro-26:London-Bike-Transit ayrton$ cd ~/London-Bike-Transit
+(base) MacBook-Pro-26:London-Bike-Transit ayrton$ pnpm add -w -D @rollup/rollup-darwin-x64
+artifacts/mockup-sandbox                 |  WARN  deprecated recharts@2.15.4
+ WARN  4 deprecated subdependencies found: glob@11.1.0, source-map@0.8.0-beta.0, sourcemap-codec@1.4.8, tsconfck@3.1.6
+Progress: resolved 831, reused 0, downloaded 0, added 0, done
+
+devDependencies:
++ @rollup/rollup-darwin-x64 ^4.62.2
+
+Packages: +1
++
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_use…
+└─ Done in 60ms
+Done in 6.9s using pnpm v10.33.1
+(base) MacBook-Pro-26:London-Bike-Transit ayrton$ cd artifacts/london-bike-transit
+(base) MacBook-Pro-26:london-bike-transit ayrton$ pnpm run android:sync
+
+> @workspace/london-bike-transit@0.0.0 android:sync /Users/ayrton/London-Bike-Transit/artifacts/london-bike-transit
+> pnpm run build:android && cap sync android
+
+
+> @workspace/london-bike-transit@0.0.0 build:android /Users/ayrton/London-Bike-Transit/artifacts/london-bike-transit
+> BUILD_TARGET=android BASE_PATH=/ vite build --config vite.config.ts
+
+failed to load config from /Users/ayrton/London-Bike-Transit/artifacts/london-bike-transit/vite.config.ts
+error during build:
+Error: Cannot find module '../lightningcss.darwin-x64.node'
+Require stack:
+- /Users/ayrton/London-Bike-Transit/node_modules/.pnpm/lightningcss@1.31.1/node_modules/lightningcss/node/index.js
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+    at Function._load (node:internal/modules/cjs/loader:1192:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+    at Module.require (node:internal/modules/cjs/loader:1463:12)
+    at require (node:internal/modules/helpers:147:16)
+    at Object.<anonymous> (/Users/ayrton/London-Bike-Transit/node_modules/.pnpm/lightningcss@1.31.1/node_modules/lightningcss/node/index.js:22:22)
+    at Module._compile (node:internal/modules/cjs/loader:1706:14)
+ ELIFECYCLE  Command failed with exit code 1.
+ ELIFECYCLE  Command failed with exit code 1.
+(base) MacBook-Pro-26:london-bike-transit ayrton$ 
