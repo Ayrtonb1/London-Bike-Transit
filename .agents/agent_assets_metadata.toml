@@ -18,3 +18,17 @@ id = "WpYirDrU73grZke4lk_oW"
 uri = "file://screenshots/navelo-screenshot-3.jpg"
 type = "image"
 title = "Screenshot 3 — See your whole route (1284×2778)"
+
+[[outputs]]
+id = "NCbyHtqdt2pfrA2_uVS0K"
+uri = "file://attached_assets/generated_images/navelo-feature-graphic.jpg"
+type = "image"
+title = "Feature Graphic (1024×500)"
+description = "Upload this in Play Console → Store presence → Main store listing → Feature graphic"
+
+[[outputs]]
+id = "uflzo4CHVqZUm0tRDsTGB"
+uri = "file://attached_assets/generated_images/navelo-play-icon.png"
+type = "image"
+title = "Play Store Icon (512×512)"
+description = "Upload this in Play Console → Store presence → Main store listing → App icon"
