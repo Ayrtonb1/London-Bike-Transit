@@ -1206,6 +1206,189 @@ async function findLockBikeJourneys(
   return [...directResults, ...stopResults];
 }
 
+/**
+ * Finds routes of the form: [cycle to S1] → [transit S1→S2] → [cycle S2→S3] → [transit S3→destination]
+ *
+ * Handles the scenario where no single transit line connects origin to
+ * destination, but two shorter transit legs joined by a mid-journey cycling
+ * segment (10–15 min) together produce a faster route than cycling alone.
+ *
+ * Strategy:
+ * - For each pair (oStop, dStop) of viable nearby stops that share NO direct
+ *   line, and are within cycling range (~4 km), plan:
+ *     · Transit: origin → oStop  (single viable transit leg)
+ *     · Cycle:   oStop → dStop   (synthesised)
+ *     · Transit: dStop → dest    (single viable transit leg)
+ * - Each transit sub-leg is planned independently against TfL; we never ask
+ *   TfL to plan the full route because it doesn't know about the mid-cycle.
+ */
+async function findMidCycleTransferJourneys(
+  fromLat: number,
+  fromLon: number,
+  toLat: number,
+  toLon: number,
+  fromLabel: string,
+  toLabel: string,
+  bikeFriendlyModes: string,
+  planningTime: PlanningTime | undefined,
+  checkDate: Date,
+  // Reuse stops already fetched in Stage 1 to avoid redundant API calls
+  preFetchedOriginStops: TflStopPoint[],
+  preFetchedDestStops: TflStopPoint[],
+): Promise<Journey[]> {
+  // Build look-up: lineId → set of stop IDs that serve that line
+  const originLineIds = new Set(preFetchedOriginStops.flatMap(s => s.lines.map(l => l.id)));
+
+  // Candidate pairs: oStop near origin, dStop near destination,
+  // no shared line, within cycling distance
+  type Pair = {
+    oStop: TflStopPoint;
+    dStop: TflStopPoint;
+    midDistMetres: number;
+  };
+
+  const pairs: Pair[] = [];
+  for (const oStop of preFetchedOriginStops) {
+    const oLineIds = new Set(oStop.lines.map(l => l.id));
+    for (const dStop of preFetchedDestStops) {
+      // Skip if they share a transit line — findMaxSingleTransit handles that
+      const sharedLine = dStop.lines.some(l => oLineIds.has(l.id));
+      if (sharedLine) continue;
+
+      // Skip if stops are the same
+      if (oStop.id === dStop.id) continue;
+
+      const straightLine = haversineMetres(oStop.lat, oStop.lon, dStop.lat, dStop.lon);
+      const roadEst = straightLine * 1.4;
+
+      // 300 m min (trivial walk) … 4 500 m max (~16 min cycling)
+      if (roadEst < 300 || roadEst > 4500) continue;
+
+      pairs.push({ oStop, dStop, midDistMetres: Math.round(roadEst) });
+    }
+  }
+
+  if (pairs.length === 0) return [];
+
+  // Sort by shortest mid-cycle distance so we try the most natural transfers first
+  pairs.sort((a, b) => a.midDistMetres - b.midDistMetres);
+
+  // Cap to avoid a TfL request explosion (each pair = 2 calls; cap at 4 pairs → 8 calls)
+  const topPairs = pairs.slice(0, 4);
+
+  const results = await Promise.all(
+    topPairs.map(async ({ oStop, dStop, midDistMetres }, idx) => {
+      // Plan both transit legs in parallel
+      const [toOStopJourneys, fromDStopJourneys] = await Promise.all([
+        fetchTflJourneys(
+          buildTflUrl(fromLat, fromLon, oStop.lat, oStop.lon, bikeFriendlyModes, planningTime),
+          900 + idx * 20,
+        ),
+        fetchTflJourneys(
+          buildTflUrl(dStop.lat, dStop.lon, toLat, toLon, bikeFriendlyModes, planningTime),
+          920 + idx * 20,
+        ),
+      ]);
+
+      // Keep only single-transit-leg journeys on each segment (simpler = more reliable)
+      const firstSeg = toOStopJourneys.find(j => {
+        const t = j.legs.filter(l => l.mode !== "cycle" && l.mode !== "walking").length;
+        return t >= 1 && t <= 2;
+      });
+      const secondSeg = fromDStopJourneys.find(j => {
+        const t = j.legs.filter(l => l.mode !== "cycle" && l.mode !== "walking").length;
+        return t >= 1 && t <= 2;
+      });
+
+      if (!firstSeg || !secondSeg) return null;
+
+      // Both legs must be bike-viable (bike travels with the user on each train)
+      if (!isJourneyViableNow(firstSeg.legs, checkDate)) return null;
+      if (!isJourneyViableNow(secondSeg.legs, checkDate)) return null;
+
+      // Synthesise the mid cycling leg between the two transfer stops
+      const midCycleLeg: RouteLeg = {
+        mode: "cycle",
+        instruction: `Cycle to ${dStop.commonName}`,
+        durationMinutes: cycleDuration(midDistMetres),
+        distanceMeters: midDistMetres,
+        fromName: oStop.commonName,
+        toName: dStop.commonName,
+        fromLat: oStop.lat,
+        fromLon: oStop.lon,
+        toLat: dStop.lat,
+        toLon: dStop.lon,
+        isSubstituted: false,
+      };
+
+      // Prepend cycle from actual origin to oStop
+      const cycleToDist = Math.round(haversineMetres(fromLat, fromLon, oStop.lat, oStop.lon) * 1.4);
+      const cycleToLeg: RouteLeg = {
+        mode: "cycle",
+        instruction: `Cycle to ${oStop.commonName}`,
+        durationMinutes: cycleDuration(cycleToDist),
+        distanceMeters: cycleToDist,
+        fromName: fromLabel,
+        toName: oStop.commonName,
+        fromLat,
+        fromLon,
+        toLat: oStop.lat,
+        toLon: oStop.lon,
+        isSubstituted: false,
+      };
+
+      const allLegs = mergeConsecutiveCycleLegs([
+        cycleToLeg,
+        ...firstSeg.legs,
+        midCycleLeg,
+        ...secondSeg.legs,
+      ]);
+
+      const totalDuration =
+        cycleToLeg.durationMinutes +
+        firstSeg.totalDurationMinutes +
+        midCycleLeg.durationMinutes +
+        secondSeg.totalDurationMinutes;
+
+      const cyclingDuration =
+        cycleToLeg.durationMinutes +
+        firstSeg.cyclingDurationMinutes +
+        midCycleLeg.durationMinutes +
+        secondSeg.cyclingDurationMinutes;
+
+      const transitModes = [
+        ...new Set(allLegs.map(l => l.mode).filter(m => m !== "cycle" && m !== "walking")),
+      ];
+      const summary =
+        transitModes.length > 0
+          ? `Cycle + ${transitModes.join(" + ")} + cycle`
+          : "Cycle only";
+
+      // Compute departure time: the departure of the first transit leg, shifted
+      // back by the time it takes to cycle to the boarding stop.
+      const firstTransitDep = firstSeg.departureTime;
+      const departureTime = firstTransitDep
+        ? new Date(
+            new Date(firstTransitDep).getTime() - cycleToLeg.durationMinutes * 60_000,
+          ).toISOString()
+        : undefined;
+
+      return {
+        id: `journey-mct-${idx}`,
+        totalDurationMinutes: totalDuration,
+        originalDurationMinutes: totalDuration,
+        cyclingDurationMinutes: cyclingDuration,
+        legs: allLegs,
+        summary,
+        departureTime,
+        arrivalTime: secondSeg.arrivalTime,
+      } as Journey;
+    }),
+  );
+
+  return results.filter((j): j is Journey => j !== null);
+}
+
 export async function planRoute(
   fromLat: number,
   fromLon: number,
@@ -1329,12 +1512,21 @@ export async function planRoute(
     ),
   ];
 
-  const [singleTransitJourneys, viaDestStopJourneys, viaOriginStopJourneys] = await Promise.all([
+  const [singleTransitJourneys, midCycleTransferJourneys, viaDestStopJourneys, viaOriginStopJourneys] = await Promise.all([
     // Best "cycle → 1 transit leg → cycle" (passes pre-fetched stops to skip
     // the duplicate StopPoint API calls it would otherwise make).
     findMaxSingleTransitJourneys(
       fromLat, fromLon, toLat, toLon, fromLabel, toLabel, BIKE_FRIENDLY_MODES, planningTime,
       nearbyOriginStops, nearbyDestStops
+    ),
+
+    // "cycle → transit → mid-cycle → transit → cycle": stitches two independent
+    // bike-viable transit legs around a 5–15 min cycling segment. Catches routes
+    // where no single line connects origin to destination but two shorter legs
+    // joined by cycling beat cycling alone. Reuses pre-fetched nearby stops.
+    findMidCycleTransferJourneys(
+      fromLat, fromLon, toLat, toLon, fromLabel, toLabel, BIKE_FRIENDLY_MODES, planningTime,
+      checkDate, nearbyOriginStops, nearbyDestStops
     ),
 
     // 2a: transit to a stop near destination, then cycle the last mile.
@@ -1378,6 +1570,7 @@ export async function planRoute(
     ...viaDestStopJourneys,
     ...viaOriginStopJourneys,
     ...singleTransitJourneys,
+    ...midCycleTransferJourneys,
   ];
 
   const totalCount = allCandidates.length;
