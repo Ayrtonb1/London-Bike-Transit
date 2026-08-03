@@ -1050,6 +1050,42 @@ function upgradeInitialWalkToCycle(j: Journey): Journey {
 }
 
 /**
+ * Lock-bike mode helper: ensures a cycle leg exists at the start of the journey.
+ * TfL sometimes omits the initial walking leg when the origin is close to a stop,
+ * starting the journey directly on transit. In that case, synthesise a short cycle
+ * leg from the user's actual origin to the first transit stop.
+ */
+function ensureInitialCycleLeg(
+  j: Journey,
+  fromLat: number,
+  fromLon: number,
+  fromLabel: string,
+): Journey {
+  const first = j.legs[0];
+  if (!first) return j;
+
+  // If first leg is already walking, upgrade it to cycling (faster)
+  if (first.mode === "walking") return upgradeInitialWalkToCycle(j);
+
+  // First leg is already a cycle — nothing to do
+  if (first.mode === "cycle") return j;
+
+  // First leg is transit — TfL started the journey at the stop with no walking leg.
+  // Synthesise a short cycle leg from the user's actual origin to the stop.
+  const stopLat = first.fromLat;
+  const stopLon = first.fromLon;
+  if (stopLat == null || stopLon == null) return j; // no coords — can't synthesise
+
+  const dist = Math.round(haversineMetres(fromLat, fromLon, stopLat, stopLon) * 1.4);
+  if (dist < 30) return j; // already effectively at the stop — no meaningful leg
+
+  return prependCycleLeg(
+    j, fromLabel, first.fromName, dist,
+    fromLat, fromLon, stopLat, stopLon,
+  );
+}
+
+/**
  * Lock-bike mode: two parallel strategies merged together.
  *
  * Strategy A — Direct (always returns results):
@@ -1074,14 +1110,17 @@ async function findLockBikeJourneys(
   const ALL_MODES =
     "tube,bus,national-rail,overground,elizabeth-line,dlr,walking,river-bus";
 
-  // Strategy A: direct TfL planning — guaranteed to return something
+  // Strategy A: direct TfL planning — guaranteed to return something.
+  // TfL sometimes omits the initial walking leg (starts directly on transit),
+  // so we use ensureInitialCycleLeg which handles both cases: upgrades a
+  // walking leg if present, or synthesises one to the first transit stop.
   const directPromise = fetchTflJourneys(
     buildTflUrl(fromLat, fromLon, toLat, toLon, ALL_MODES, planningTime),
     700,
     { substituteWalking: false },
   ).then((journeys) =>
     journeys
-      .map(upgradeInitialWalkToCycle)
+      .map((j) => ensureInitialCycleLeg(j, fromLat, fromLon, fromLabel))
       // Only keep journeys that actually involve cycling (have a cycle leg)
       .filter((j) => j.legs.some((l) => l.mode === "cycle"))
   );
@@ -1116,14 +1155,15 @@ async function findLockBikeJourneys(
 
     if (stops.length === 0) return [];
 
-    // Focus on stops that are meaningfully further away (≥ 500 m road-est).
-    // Sorting closest-first ensures we still prefer the most reachable option.
+    // Include stops from 150 m away — even a short cycle to a nearby station
+    // unlocks any transit line (no bike on board). 500 m was too aggressive and
+    // excluded the user's own nearest station (often 200–400 m away).
     const candidates = stops
       .map((stop) => ({
         stop,
         dist: Math.round(haversineMetres(fromLat, fromLon, stop.lat, stop.lon) * 1.4),
       }))
-      .filter((c) => c.dist >= 500)
+      .filter((c) => c.dist >= 150)
       .sort((a, b) => a.dist - b.dist)
       .slice(0, 3);
 

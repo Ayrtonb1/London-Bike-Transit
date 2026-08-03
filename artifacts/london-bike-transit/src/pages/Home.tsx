@@ -434,6 +434,20 @@ export default function Home() {
                         {routeData.journeys.length} option{routeData.journeys.length !== 1 ? "s" : ""}
                       </span>
                     </div>
+                    {/* Explain why only cycling is shown when transit routes were filtered */}
+                    {(() => {
+                      const hasOnlyCycling = routeData.journeys.every(j => j.summary === "Cycle only");
+                      const filtered = routeData.filteredCount ?? 0;
+                      if (hasOnlyCycling && filtered > 0 && !lockBike) {
+                        return (
+                          <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-800 leading-relaxed">
+                            <strong>{filtered} transit route{filtered !== 1 ? "s" : ""} found</strong> but {filtered === 1 ? "it uses" : "they use"} lines that don't allow bikes{displayPeakStatus.isPeak ? ` during peak hours` : ""}.
+                            {" "}Try <strong>Lock bike at start</strong> to use any line.
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                     {routeData.journeys.map((journey) => (
                       <JourneyCard
                         key={journey.id}
