@@ -1,0 +1,125 @@
+Do you want to proceed with the installation? [y/n]
+==> Fetching downloads for: openjdk
+✔︎ API Source openjdk.rb                             Verified      5.8KB/  5.8KB
+
+✔︎ API Source libpng.rb                              Verified      2.5KB/  2.5KB
+✔︎ Formula libpng (1.6.58)                           Verified      1.1MB/  1.1MB
+✔︎ API Source pkgconf.rb                             Verified      5.5KB/  5.5KB
+✔︎ Formula pkgconf (3.0.5)                           Verified    427.0KB/427.0KB
+✔︎ API Source freetype.rb                            Verified      2.1KB/  2.1KB
+✔︎ Formula freetype (2.14.3)                         Verified      2.7MB/  2.7MB
+✔︎ API Source giflib.rb                              Verified      1.7KB/  1.7KB
+✔︎ Formula giflib (6.1.3)                            Verified    470.6KB/470.6KB
+✔︎ API Source cmake.rb                               Verified      3.2KB/  3.2KB
+✔︎ Formula cmake (4.4.2)                             Verified     13.3MB/ 13.3MB
+✔︎ API Source json-c.rb                              Verified      2.0KB/  2.0KB
+✔︎ Formula json-c (0.19)                             Verified    462.2KB/462.2KB
+✔︎ API Source libunistring.rb                        Verified      2.5KB/  2.5KB
+✔︎ Formula libunistring (1.4.2)                      Verified      5.0MB/  5.0MB
+✔︎ API Source gettext.rb                             Verified      2.9KB/  2.9KB
+✔︎ Formula gettext (1.0)                             Verified     32.7MB/ 32.7MB
+✔︎ API Source ninja.rb                               Verified      2.3KB/  2.3KB
+✔︎ Formula ninja (1.13.2)                            Verified    292.4KB/292.4KB
+✔︎ Bottle ca-certificates (2026-07-16)               Downloaded  110.9KB/110.9KB
+✔︎ API Source openssl@3.rb                           Verified      8.2KB/  8.2KB
+✔︎ Formula openssl@3 (3.6.3)                         Verified     55.0MB/ 55.0MB
+✔︎ API Source readline.rb                            Verified      4.5KB/  4.5KB
+✔︎ Patch readline83-001                              Verified      1.8KB/  1.8KB
+✔︎ Patch readline83-002                              Verified      1.6KB/  1.6KB
+✔︎ Patch readline83-003                              Verified      2.3KB/  2.3KB
+✔︎ Formula readline (8.3.3)                          Verified      3.4MB/  3.4MB
+✔︎ API Source sqlite.rb                              Verified      3.3KB/  3.3KB
+✔︎ Formula sqlite (3.53.4)                           Verified      3.3MB/  3.3MB
+✔︎ API Source xz.rb                                  Verified      2.1KB/  2.1KB
+✔︎ Formula xz (5.8.3)                                Verified      2.8MB/  2.8MB
+✔︎ API Source zstd.rb                                Verified      3.6KB/  3.6KB
+✔︎ Formula zstd (1.5.7)                              Verified      2.5MB/  2.5MB
+✔︎ API Source expat.rb                               Verified      2.7KB/  2.7KB
+✔︎ Formula expat (2.8.2)                             Verified    515.5KB/515.5KB
+✔︎ API Source python@3.14.rb                         Verified     24.4KB/ 24.4KB
+✔︎ Resource python@3.14--flit-core                   Verified     53.7KB/ 53.7KB
+✔︎ Resource python@3.14--packaging                   Verified    228.1KB/228.1KB
+✔︎ Resource python@3.14--pip                         Verified      1.8MB/  1.8MB
+✔︎ Resource python@3.14--wheel                       Verified     63.9KB/ 63.9KB
+✔︎ Formula python@3.14 (3.14.6)                      Verified     31.2MB/ 31.2MB
+✔︎ Bottle meson (1.11.2)                             Downloaded  945.8KB/945.8KB
+✔︎ API Source fontconfig.rb                          Verified      2.7KB/  2.7KB
+✔︎ Formula fontconfig (2.18.2)                       Verified    654.4KB/654.4KB
+✔︎ API Source pcre2.rb                               Verified      2.2KB/  2.2KB
+✔︎ Formula pcre2 (10.47)                             Verified      2.1MB/  2.1MB
+✔︎ Bottle bison (3.8.2)                              Downloaded    1.1MB/  1.1MB
+✔︎ Bottle python-setuptools (83.0.0)                 Downloaded  946.2KB/946.2KB
+✔︎ API Source glib.rb                                Verified      7.8KB/  7.8KB
+✔︎ Resource glib--gobject-introspection              Verified      1.1MB/  1.1MB
+✔︎ Formula glib (2.88.3)                             Verified      5.8MB/  5.8MB
+✔︎ Bottle util-macros (1.20.2)                       Downloaded   52.7KB/ 52.7KB
+✔︎ API Source xorgproto.rb                           Verified      1.7KB/  1.7KB
+✔︎ Formula xorgproto (2025.1)                        Verified      1.1MB/  1.1MB
+✔︎ Bottle libxau (1.0.12)                            Downloaded   31.6KB/ 31.6KB
+✔︎ Bottle libxdmcp (1.1.5)                           Downloaded   35.9KB/ 35.9KB
+✔︎ Bottle libxcb (1.17.0)                            Downloaded  976.3KB/976.3KB
+✔︎ Bottle xtrans (1.6.0)                             Downloaded   80.2KB/ 80.2KB
+✔︎ API Source libx11.rb                              Verified      2.7KB/  2.7KB
+✔︎ Formula libx11 (1.8.13)                           Verified      3.2MB/  3.2MB
+✔︎ API Source libxext.rb                             Verified      1.7KB/  1.7KB
+✔︎ Formula libxext (1.3.7)                           Verified    526.1KB/526.1KB
+✔︎ Bottle libxrender (0.9.12)                        Downloaded   54.9KB/ 54.9KB
+✔︎ Bottle lzo (2.10)                                 Downloaded  153.2KB/153.2KB
+✔︎ Bottle pixman (0.46.4)                            Downloaded  546.5KB/546.5KB
+✔︎ API Source cairo.rb                               Verified      2.5KB/  2.5KB
+✔︎ API Source graphite2.rb                           Verified      1.9KB/  1.9KB
+✔︎ Formula graphite2 (1.3.15)                        Verified     13.7MB/ 13.7MB
+✔︎ API Source icu4c@78.rb                            Verified      2.3KB/  2.3KB
+✔︎ API Source gobject-introspection.rb               Verified      5.9KB/  5.9KB
+✔︎ Resource gobject-introspection--mako              Verified    400.2KB/400.2KB
+✔︎ Resource gobject-introspection--markdown          Verified    368.8KB/368.8KB
+✔︎ Resource gobject-introspection--markupsafe        Verified     80.3KB/ 80.3KB
+✔︎ Resource gobject-introspection--setuptools        Verified      1.2MB/  1.2MB
+✔︎ Formula gobject-introspection (1.86.0)            Preparing     1.1MB/  1.1MB
+✔︎ API Source harfbuzz.rb                            Verified      2.5KB/  2.5KB
+✔︎ API Source nasm.rb                                Verified      1.9KB/  1.9KB
+✔︎ Formula nasm (3.02)                               Verified      1.5MB/  1.5MB
+✔︎ API Source jpeg-turbo.rb                          Verified      3.3KB/  3.3KB
+✔︎ Formula jpeg-turbo (3.2.0)                        Verified      2.5MB/  2.5MB
+✔︎ Bottle webp (1.6.0)                               Downloaded    1.1MB/  1.1MB
+✔︎ API Source libtiff.rb                             Verified      3.3KB/  3.3KB
+✔︎ Formula libtiff (4.7.2)                           Verified      4.1MB/  4.1MB
+✔︎ API Source little-cms2.rb                         Verified      2.1KB/  2.1KB
+✔︎ API Source m4.rb                                  Verified      1.7KB/  1.7KB
+✔︎ API Source autoconf.rb                            Verified      2.5KB/  2.5KB
+✔︎ Formula icu4c@78 (78.3)                           Verified     28.0MB/ 28.0MB
+✔︎ Formula harfbuzz (14.3.0)                         Verified     19.8MB/ 19.8MB
+✔︎ Formula little-cms2 (2.19)                        Verified      5.7MB/  5.7MB
+✔︎ Formula m4 (1.4.21)                               Verified      2.1MB/  2.1MB
+✔︎ Formula cairo (1.18.4)                            Verified     32.6MB/ 32.6MB
+✔︎ Formula autoconf (2.73)                           Verified      2.2MB/  2.2MB
+✔︎ Formula openjdk (26.0.2)                          Verified    121.7MB/121.7MB
+✔︎ Resource openjdk--boot-jdk                        Verified    222.5MB/222.5MB
+Warning: A newer Command Line Tools release is available.
+Update them from Software Update in System Settings.
+
+If that doesn't show you any updates, run:
+  sudo rm -rf /Library/Developer/CommandLineTools
+  sudo xcode-select --install
+
+Alternatively, manually download them from:
+  https://developer.apple.com/download/all/.
+You should download the Command Line Tools for Xcode 15.2.
+openjdk: A full installation of Xcode.app is required to compile
+this software. Installing just the Command Line Tools is not sufficient.
+
+Xcode can be installed from the App Store.
+Error: An unsatisfied requirement failed this build.
+(base) MacBook-Pro-26:~ ayrton$ 
+(base) MacBook-Pro-26:~ ayrton$ echo 'export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"' >> ~/.zshrc
+(base) MacBook-Pro-26:~ ayrton$ source ~/.zshrc
+(base) MacBook-Pro-26:~ ayrton$ keytool -genkey -v \
+>   -keystore navelo-release.jks \
+>   -alias navelo \
+>   -keyalg RSA \
+>   -keysize 2048 \
+>   -validity 10000
+The operation couldn’t be completed. Unable to locate a Java Runtime.
+Please visit http://www.java.com for information on installing Java.
+
+(base) MacBook-Pro-26:~ ayrton$ 
