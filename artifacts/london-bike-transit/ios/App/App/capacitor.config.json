@@ -7,11 +7,15 @@
 		"backgroundColor": "#ffffff",
 		"scrollEnabled": true
 	},
+	"android": {
+		"backgroundColor": "#ffffff"
+	},
 	"plugins": {
 		"SplashScreen": {
 			"launchShowDuration": 800,
 			"backgroundColor": "#ffffff",
 			"iosSpinnerStyle": "small",
+			"androidSpinnerStyle": "small",
 			"showSpinner": false
 		},
 		"StatusBar": {
@@ -26,12 +30,7 @@
 		}
 	},
 	"packageClassList": [
-		"AppPlugin",
-		"GeolocationPlugin",
 		"HapticsPlugin",
-		"KeyboardPlugin",
-		"SharePlugin",
-		"SplashScreenPlugin",
-		"StatusBarPlugin"
+		"KeyboardPlugin"
 	]
 }
