@@ -40,13 +40,24 @@ cat "$PACKAGE_SWIFT"
 # Install workspace dependencies
 pnpm install --no-frozen-lockfile
 
-# Build the web app — set iOS env vars explicitly so PORT is not required
+# Build the web app
 cd artifacts/london-bike-transit
 BUILD_TARGET=ios BASE_PATH=/ pnpm run build:ios
 
 # Copy web bundle into the iOS public folder
-# Vite outputs to dist/public/ (matching webDir in capacitor.config.ts)
 mkdir -p ios/App/App/public
 cp -r dist/public/* ios/App/App/public/
+
+# Regenerate the workspace Package.resolved so Xcode Cloud sees it as
+# up-to-date after pnpm install may have rewritten Package.swift.
+echo "=== Resolving Swift package dependencies ==="
+cd "$CI_PRIMARY_REPOSITORY_PATH/artifacts/london-bike-transit/ios/App"
+xcodebuild -resolvePackageDependencies \
+  -workspace App.xcworkspace \
+  -scheme App \
+  -derivedDataPath /tmp/NaveloDerivedData \
+  | tail -5
+echo "=== Package.resolved after resolve ==="
+cat App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 echo "=== Post-clone complete ==="
