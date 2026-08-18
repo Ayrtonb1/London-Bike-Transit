@@ -40,24 +40,51 @@ cat "$PACKAGE_SWIFT"
 # Install workspace dependencies
 pnpm install --no-frozen-lockfile
 
-# Build the web app
+# Build the web app — set iOS env vars explicitly so PORT is not required
 cd artifacts/london-bike-transit
 BUILD_TARGET=ios BASE_PATH=/ pnpm run build:ios
 
 # Copy web bundle into the iOS public folder
+# Vite outputs to dist/public/ (matching webDir in capacitor.config.ts)
 mkdir -p ios/App/App/public
 cp -r dist/public/* ios/App/App/public/
 
-# Regenerate the workspace Package.resolved so Xcode Cloud sees it as
-# up-to-date after pnpm install may have rewritten Package.swift.
-echo "=== Resolving Swift package dependencies ==="
+# Write Package.resolved to match exactly what Package.swift contains after
+# the sed processing above. This is deterministic and avoids relying on
+# xcodebuild -resolvePackageDependencies inside a CI pre-clone script.
+echo "=== Writing Package.resolved ==="
 cd "$CI_PRIMARY_REPOSITORY_PATH/artifacts/london-bike-transit/ios/App"
-xcodebuild -resolvePackageDependencies \
-  -workspace App.xcworkspace \
-  -scheme App \
-  -derivedDataPath /tmp/NaveloDerivedData \
-  | tail -5
-echo "=== Package.resolved after resolve ==="
+
+PKG_VERSION=$(grep -o 'exact: "[^"]*"' CapApp-SPM/Package.swift | sed 's/exact: "//;s/"//')
+echo "Detected capacitor-swift-pm version: $PKG_VERSION"
+
+case "$PKG_VERSION" in
+  "8.4.1") PKG_SHA="2231987d85b8b0b289320b1d0947b4ae8345cde4" ;;
+  "8.3.1") PKG_SHA="f1a8fadf1437c23b825c818fb6509c9dbbae2f61" ;;
+  *)
+    echo "Unknown capacitor-swift-pm version '$PKG_VERSION' — cannot write Package.resolved"
+    exit 1
+    ;;
+esac
+
+cat > App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved << EOF
+{
+  "pins" : [
+    {
+      "identity" : "capacitor-swift-pm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ionic-team/capacitor-swift-pm.git",
+      "state" : {
+        "revision" : "$PKG_SHA",
+        "version" : "$PKG_VERSION"
+      }
+    }
+  ],
+  "version" : 3
+}
+EOF
+
+echo "=== Package.resolved written ==="
 cat App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 echo "=== Post-clone complete ==="
